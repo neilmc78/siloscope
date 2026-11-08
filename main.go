@@ -47,6 +47,7 @@ type config struct {
 	hostNetworkStatsDir string
 	plexURL             *url.URL
 	plexToken           string
+	siloMonitorKey      string
 }
 
 type cacheEntry struct {
@@ -95,7 +96,7 @@ type application struct {
 	client        *http.Client
 	cache         proxyCache
 	history       resourceHistory
-	activity      activityHistory
+	store         *store
 	network       *hostNetworkSampler
 	processes     *processSampler
 	notifications *notificationService
@@ -120,11 +121,13 @@ func main() {
 		}
 	}
 	if directory := strings.TrimSpace(os.Getenv("ACTIVITY_DATA_DIR")); directory != "" {
-		if err := app.activity.open(directory); err != nil {
+		app.store, err = openStore(directory)
+		if err != nil {
 			log.Fatal("playback history storage could not be initialized: ", err)
 		}
+		defer app.store.close()
 	} else {
-		log.Print("ACTIVITY_DATA_DIR is unset; playback history will not survive restarts")
+		log.Print("ACTIVITY_DATA_DIR is unset; playback history is disabled")
 	}
 	if contact := strings.TrimSpace(os.Getenv("PUSH_CONTACT")); contact != "" {
 		contactURL, err := url.Parse(contact)
@@ -156,6 +159,13 @@ func main() {
 		go app.ifd.run(ctx)
 	}
 	go app.runActivity(ctx)
+	if app.store != nil {
+		go newSiloIngester(app, app.store).run(ctx)
+		if cfg.plexURL != nil {
+			go newPlexIngester(app, app.store).run(ctx)
+		}
+		go app.sampleStreams(ctx)
+	}
 	if app.notifications != nil {
 		go app.runNotifications(ctx)
 	}
@@ -224,6 +234,7 @@ func loadConfig() (config, error) {
 		hostNetworkStatsDir: strings.TrimSpace(os.Getenv("HOST_NETWORK_STATS_DIR")),
 		plexURL:             plexURL,
 		plexToken:           plexToken,
+		siloMonitorKey:      strings.TrimSpace(os.Getenv("SILO_MONITOR_API_KEY")),
 	}, nil
 }
 
@@ -272,6 +283,8 @@ func (a *application) routes() http.Handler {
 	mux.HandleFunc("POST /api/library/retry-search", a.replacementRetry)
 	mux.HandleFunc("GET /api/history", a.resourceHistoryJSON)
 	mux.HandleFunc("GET /api/activity", a.activityJSON)
+	mux.HandleFunc("GET /api/people", a.peopleJSON)
+	mux.HandleFunc("POST /api/people", a.peopleJSON)
 	mux.HandleFunc("GET /api/processes", a.processCPUJSON)
 	mux.HandleFunc("GET /api/notifications", a.notificationsJSON)
 	mux.HandleFunc("POST /api/notifications", a.notificationsJSON)
@@ -292,6 +305,20 @@ func (a *application) routes() http.Handler {
 	mux.Handle("/", http.FileServer(http.FS(content)))
 
 	return securityHeaders(mux)
+}
+
+// sampleStreams records per-minute concurrency and bandwidth from the play store.
+func (a *application) sampleStreams(ctx context.Context) {
+	ticker := time.NewTicker(time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case now := <-ticker.C:
+			a.store.recordStreamSample(ctx, now)
+		}
+	}
 }
 
 func (a *application) sampleResources(ctx context.Context) {

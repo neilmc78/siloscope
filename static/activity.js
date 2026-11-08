@@ -68,10 +68,22 @@ const PlaybackActivity = (() => {
       const label = entry.status === "active" ? "Active" : ago;
       copy.append(element("span", "activity-user", [entry.source, entry.user, label].filter(Boolean).join(" — ")));
       heading.append(poster, copy);
-      const detail = [entry.source, entry.user, entry.method, `${duration} observed`].filter(Boolean).join(" · ");
-      const start = `${entry.already_active ? "First seen" : "Start observed"} ${clock(entry.started_at)}`;
-      const end = entry.ended_at ? ` · Stop observed ${clock(entry.ended_at)}` : "";
-      details.append(heading, element("div", "activity-detail", detail), element("div", "activity-times", start + end));
+      const span = value => {
+        const total = Math.floor(Math.max(0, value) / 60);
+        return total >= 60 ? `${Math.floor(total / 60)}h ${total % 60}m` : `${total}m`;
+      };
+      const watchedText = entry.origin === "plex_history" ? "Imported from Plex history" : entry.played_seconds != null ? `${duration} watched` : `${duration} observed`;
+      const progress = entry.percent_complete != null ? `${Math.round(entry.percent_complete)}%${entry.watched ? " ✓" : ""}` : "";
+      const pausedText = entry.paused_seconds >= 60 ? `paused ${span(entry.paused_seconds)}` : "";
+      const detail = [entry.source, entry.user, entry.method, watchedText, pausedText, progress].filter(Boolean).join(" · ");
+      const client = [entry.client, entry.platform, entry.quality, entry.location ? entry.location.toUpperCase() : "", entry.ip_address].filter(Boolean).join(" · ");
+      const start = `Started ${clock(entry.started_at)}`;
+      const end = entry.ended_at ? ` · Ended ${clock(entry.ended_at)}` : "";
+      const reason = entry.end_reason && entry.end_reason !== "stopped" ? ` (${entry.end_reason})` : "";
+      details.append(heading, element("div", "activity-detail", detail));
+      if (client) details.append(element("div", "activity-detail", client));
+      if (entry.person && entry.person !== entry.user) details.append(element("div", "activity-detail", `Person: ${entry.person}`));
+      details.append(element("div", "activity-times", start + end + reason));
       row.append(details);
       list.append(row);
     }

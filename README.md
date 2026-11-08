@@ -92,6 +92,7 @@ services:
       environment:
          SILO_URL: ${SILO_URL:?Set SILO_URL}
          SILO_API_KEY: ${SILO_API_KEY:?Set SILO_API_KEY}
+         SILO_MONITOR_API_KEY: ${SILO_MONITOR_API_KEY:-}
          PLEX_URL: ${PLEX_URL:-}
          PLEX_TOKEN: ${PLEX_TOKEN:-}
          IFD_URL: ${IFD_URL:-}
@@ -156,6 +157,7 @@ Replace the example name with your actual volume name and keep the service mount
 | --- | --- | --- |
 | `SILO_URL` | required | Silo base URL reachable by the monitor container |
 | `SILO_API_KEY` | required | Silo admin API key |
+| `SILO_MONITOR_API_KEY` | unset | Optional second Silo admin key with only the `admin:monitor:read` scope. Enables live session events for history; without it Siloscope polls Silo's session list every 15 seconds |
 | `PLEX_URL` | unset | Optional Plex Media Server base URL, usually `http://plex:32400` |
 | `PLEX_TOKEN` | unset | Plex server-owner token; required with `PLEX_URL` ([find your token](https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/)) |
 | `IFD_URL` | unset | Optional InfiniDysk backend URL, for example `http://nzbdav:8080` on a shared private Docker network |
@@ -172,7 +174,7 @@ Replace the example name with your actual volume name and keep the service mount
 | `HOST_PROC_DIR` | unset | Host process statistics path; supplied by the process override |
 | `PUSH_CONTACT` | unset | Enables Web Push when set to a real `mailto:` address or HTTPS contact URL |
 | `PUSH_DATA_DIR` | `/data/push` in Compose | Persistent notification data; required when push is enabled |
-| `ACTIVITY_DATA_DIR` | `/data/activity` in Docker/Compose | Persistent playback history; set explicitly for standalone binaries |
+| `ACTIVITY_DATA_DIR` | `/data/activity` in Docker/Compose | Playback history database (`siloscope.db`); set explicitly for standalone binaries |
 
 The image is published for AMD64 and ARM64 at `ghcr.io/safetyp1/silo-monitor:latest`.
 
@@ -214,8 +216,27 @@ Under **Settings > System**, move the InfiniDysk panel up or down, toggle its in
 
 - **System:** resource charts, free disk space, top CPU processes, and the Silo API server build. Optional InfiniDysk monitoring adds fetched/served throughput, connections in use, and active filenames with fetching speed and bytes fetched. No provider names are displayed.
 - **Playing:** Silo and Plex sessions together, including users, clients, progress, resolution, audio details, source-file bitrate, and direct-play/transcode status.
-- **History:** recent activity with All/Silo/Plex filters and expandable session details. Retains up to 200 records within 30 days; durations represent observed sessions, not exact watch time.
+- **History:** every play with All/Silo/Plex filters and expandable details: watch time, pause time, progress, client, platform, quality, LAN/WAN and IP. See [Playback history](#playback-history).
 - **Nodes:** playback-node health, resource usage, routed streams, and jobs. Stale or unavailable data is clearly marked.
+
+## Playback history
+
+History is stored in SQLite at `ACTIVITY_DATA_DIR/siloscope.db` and kept indefinitely. Back up the `/data` volume to keep it.
+
+| Source | How plays are recorded |
+| --- | --- |
+| Silo | Silo's own finalized playback log is the authority for ended plays, with measured watch and pause time, client, device, IP, and stream decisions. On first start Siloscope imports all of it. Live plays come from Silo's session events when `SILO_MONITOR_API_KEY` is set, otherwise from a 15-second session poll. |
+| Plex | Siloscope listens on Plex's notification websocket. Each play records the source file (codec, resolution, HDR, bitrate) and the stream (decisions, hardware transcoding, subtitle burn-in, bandwidth, LAN/WAN). Watch and pause time are measured from Plex's position updates; seeks are not counted. A play counts as watched at 85%. On first start Plex's own watch history is imported for earlier views; Plex keeps only finished views, so those rows have no duration or stream details. |
+
+Resumed plays of the same item by the same user are grouped. Per-minute stream counts and bandwidth are also recorded for future graphs.
+
+To create the monitoring key, sign in to Silo as an administrator and create an API key with only the `admin:monitor:read` scope. Silo refuses the live session socket to unscoped keys, so `SILO_API_KEY` cannot be reused.
+
+### Linked accounts
+
+Each Silo and Plex account belongs to a person. A Silo account linked to Plex through the Plex sign-in plugin is matched automatically to that person's Plex account, using the plex.tv account ID. Siloscope reads the Plex owner and shared users from plex.tv, so the container needs outbound HTTPS to plex.tv; without it, matching falls back to the account ID in each Plex user's avatar URL. Accounts used on only one server stay on their own. `GET /api/people` lists people and their accounts; `POST /api/people` links accounts by hand (`{"action":"link","account_ids":[1,2]}`), unlinks one (`{"action":"unlink","account_id":1}`) or renames a person (`{"action":"rename","person_id":1,"display_name":"Sam"}`). Manual changes are never undone by automatic matching.
+
+The previous `history.json` file is no longer read. Silo plays it held are re-imported from Silo; Plex plays are replaced by Plex's history import.
 
 ## Find and replace media
 
