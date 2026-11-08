@@ -230,7 +230,16 @@ History is stored in SQLite at `ACTIVITY_DATA_DIR/siloscope.db` and kept indefin
 
 Resumed plays of the same item by the same user are grouped. Per-minute stream counts and bandwidth are also recorded for future graphs.
 
-To create the monitoring key, sign in to Silo as an administrator and create an API key with only the `admin:monitor:read` scope. Silo refuses the live session socket to unscoped keys, so `SILO_API_KEY` cannot be reused.
+Silo refuses the live session socket to unscoped keys, so `SILO_API_KEY` cannot be reused. Silo's API key page sets only a rate limit, so create the monitoring key through the API with your existing admin key:
+
+```sh
+curl -sS -X POST "$SILO_URL/api/v2/admin/api-keys" \
+  -H "Authorization: Bearer $SILO_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"label":"Siloscope monitor","scopes":["admin:monitor:read"]}'
+```
+
+Copy `key` from the response into `SILO_MONITOR_API_KEY`; Silo shows it only once. The new key belongs to the same admin account.
 
 ### Linked accounts
 
