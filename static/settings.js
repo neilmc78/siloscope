@@ -80,6 +80,7 @@
     // If the open view's tab was hidden, move to the first visible tab.
     const active = tabs.querySelector(".tab-button.active");
     if (active?.hidden) tabs.querySelector(".tab-button:not([hidden])")?.click();
+    model.applyTheme(preferences);
     document.documentElement.style.setProperty("--chart-height", `${preferences.chartHeight}px`);
     window.dispatchEvent(new CustomEvent("monitor-settings-change", { detail: { chartMinutes: preferences.chartMinutes, historyFilter: preferences.historyFilter } }));
   }
@@ -98,6 +99,10 @@
 
   function renderOptions(focusKey) {
     options.replaceChildren();
+    if (activeGroup === "appearance") {
+      renderAppearance(focusKey);
+      return;
+    }
     if (activeGroup === "navigation") {
       const order = makeSection("Bottom navigation");
       preferences.navOrder.forEach((key, index) => {
@@ -231,7 +236,94 @@
     if (focusKey) options.querySelector(`[data-order="${focusKey}"]`)?.focus();
   }
 
-  for (const [key, definition] of Object.entries({ ...model.groups, navigation: { label: "Navigation" }, transcoder: { label: "Transcoder" }, notifications: { label: "Notifications" } })) {
+  function renderAppearance(focusKey) {
+    const themeSection = makeSection("Theme");
+    const grid = make("div", "theme-grid");
+    for (const [key, label, description, [background, surface, accent, text]] of model.themes) {
+      const card = make("button", "theme-card");
+      card.type = "button";
+      card.dataset.order = `theme-${key}`;
+      card.setAttribute("aria-pressed", String(preferences.theme === key));
+      const preview = make("span", "theme-preview");
+      preview.style.background = background;
+      for (const color of [surface, accent, text]) {
+        const swatch = make("span");
+        swatch.style.background = color;
+        preview.append(swatch);
+      }
+      preview.setAttribute("aria-hidden", "true");
+      card.append(preview, make("strong", "", label), make("small", "", description));
+      card.addEventListener("click", () => {
+        preferences.theme = key;
+        commit();
+        renderOptions(`theme-${key}`);
+      });
+      grid.append(card);
+    }
+    themeSection.append(grid);
+
+    const accentSection = makeSection("Accent colour");
+    const accents = make("div", "accent-grid");
+    const swatch = (value, label, className = "accent-swatch") => {
+      const button = make("button", className);
+      button.type = "button";
+      button.title = label;
+      button.setAttribute("aria-label", label);
+      button.setAttribute("aria-pressed", String(preferences.accent === value));
+      button.dataset.order = `accent-${value || "default"}`;
+      if (value) button.style.setProperty("--swatch", value);
+      button.addEventListener("click", () => {
+        preferences.accent = value;
+        commit();
+        renderOptions(button.dataset.order);
+      });
+      return button;
+    };
+    accents.append(swatch("", "Theme default", "accent-swatch default"));
+    for (const [value, label] of model.accents) accents.append(swatch(value, label));
+    const custom = make("label", "accent-swatch accent-custom");
+    custom.title = "Custom colour";
+    const isCustom = preferences.accent && !model.accents.some(([value]) => value === preferences.accent);
+    custom.setAttribute("aria-pressed", String(!!isCustom));
+    if (isCustom) custom.style.background = preferences.accent;
+    const picker = document.createElement("input");
+    picker.type = "color";
+    picker.value = preferences.accent || "#ee8b9d";
+    picker.setAttribute("aria-label", "Custom accent colour");
+    picker.dataset.order = "accent-custom";
+    picker.addEventListener("input", () => {
+      preferences.accent = picker.value.toLowerCase();
+      model.applyTheme(preferences);
+      custom.style.background = picker.value;
+    });
+    picker.addEventListener("change", () => {
+      preferences.accent = picker.value.toLowerCase();
+      commit();
+      renderOptions("accent-custom");
+    });
+    custom.append(picker);
+    accents.append(custom);
+    accentSection.append(accents, make("p", "settings-note", "Used for buttons, highlights and the CPU graph. Theme default keeps each theme's own accent."));
+
+    const effects = makeSection("Effects");
+    const toggle = make("label", "settings-toggle");
+    const copy = make("span", "");
+    copy.append(make("span", "", "Animated effects"), make("small", "settings-note", "Console scanlines and blinking cursor, Matrix code rain. Off saves battery; reduced-motion devices always get still versions."));
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.checked = preferences.effects;
+    input.dataset.order = "effects";
+    input.addEventListener("change", () => {
+      preferences.effects = input.checked;
+      commit();
+    });
+    toggle.append(copy, input);
+    effects.append(toggle);
+    options.append(themeSection, accentSection, effects);
+    if (focusKey) options.querySelector(`[data-order="${focusKey}"]`)?.focus();
+  }
+
+  for (const [key, definition] of Object.entries({ appearance: { label: "Appearance" }, ...model.groups, navigation: { label: "Navigation" }, transcoder: { label: "Transcoder" }, notifications: { label: "Notifications" } })) {
     const button = make("button", "settings-menu-item");
     button.type = "button";
     const arrow = make("span", "", "\u203a");
@@ -281,6 +373,11 @@
     if (activeGroup === "navigation") {
       preferences.navOrder = [...model.navOrder];
       preferences.navHidden = [];
+    }
+    if (activeGroup === "appearance") {
+      preferences.theme = "rose";
+      preferences.accent = "";
+      preferences.effects = true;
     }
     if (activeGroup === "system") {
       preferences.systemOrder = [...model.systemOrder];
