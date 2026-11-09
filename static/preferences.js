@@ -3,7 +3,7 @@
 const MonitorPreferences = (() => {
   const storageKey = "silo-monitor.ui.v1";
   const systemOrder = ["disk", "cpu", "network", "ifd", "memory"];
-  const navOrder = ["system", "playing", "library", "infrastructure", "settings"];
+  const navOrder = ["system", "playing", "stats", "library", "infrastructure", "settings"];
   const groups = {
     system: {
       label: "System",
