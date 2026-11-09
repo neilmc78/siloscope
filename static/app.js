@@ -506,7 +506,51 @@ function setLiveReadout(svg, value, detail) {
   }
 }
 
+// Library sizes come from Silo's catalog (GET /api/library-usage). Disks
+// report whole filesystems, so libraries on one NAS share show identical
+// figures; the catalog says how much of the share each library holds.
+let libraryUsage = [];
+let libraryUsageCheckedAt = 0;
+let lastDisks = null;
+
+async function loadLibraryUsage() {
+  try {
+    const response = await fetch("/api/library-usage", { cache: "no-store", signal: AbortSignal.timeout(10000) });
+    if (!response.ok) return;
+    const payload = await response.json();
+    if (Array.isArray(payload?.libraries)) libraryUsage = payload.libraries;
+    if (lastDisks) showDisks(lastDisks);
+  } catch {}
+}
+
+function formatGiB(gib) {
+  return gib >= 1024 ? { value: (gib / 1024).toFixed(1), unit: "TiB" } : { value: gib.toFixed(1), unit: "GiB" };
+}
+
+function formatBytes(bytes) {
+  const size = formatGiB(Number(bytes) / 1024 ** 3);
+  return `${size.value} ${size.unit}`;
+}
+
+function trimPath(path) {
+  return String(path || "").replace(/\/+$/, "");
+}
+
+function libraryOnDisk(library, diskPath) {
+  const disk = trimPath(diskPath);
+  if (!disk) return false;
+  return (library.paths || []).some((raw) => {
+    const path = trimPath(raw);
+    return path === disk || path.startsWith(`${disk}/`) || disk.startsWith(`${path}/`);
+  });
+}
+
 function showDisks(disks) {
+  lastDisks = disks;
+  if (Date.now() - libraryUsageCheckedAt > 5 * 60_000) {
+    libraryUsageCheckedAt = Date.now();
+    loadLibraryUsage();
+  }
   elements.diskList.replaceChildren();
   const available = Array.isArray(disks)
     ? disks.filter((disk) => !disk.unavailable && Number.isFinite(disk.total_gb) && disk.total_gb > 0 && Number.isFinite(disk.used_gb) && disk.used_gb >= 0 && disk.used_gb <= disk.total_gb)
@@ -516,32 +560,81 @@ function showDisks(disks) {
     return;
   }
 
+  // Mounts with identical figures are one filesystem that Silo could not
+  // identify as shared (network and FUSE mounts), so show them once.
+  const groups = [];
   for (const disk of available) {
+    const key = disk.scratch ? `scratch:${groups.length}` : `${disk.used_gb}|${disk.total_gb}|${disk.stale === true}`;
+    const group = groups.find((candidate) => candidate.key === key);
+    if (group) group.disks.push(disk);
+    else groups.push({ key, disks: [disk] });
+  }
+  const mediaGroups = groups.filter((group) => !group.disks[0].scratch);
+  const anyPaths = available.some((disk) => disk.path);
+
+  for (const group of groups) {
+    const disk = group.disks[0];
     const used = Number(disk.used_gb);
     const total = Number(disk.total_gb);
     const percent = validPercent((used / total) * 100);
-    const row = elementWithClass("div", "disk-row");
+    const paths = group.disks.map((item) => item.path).filter(Boolean);
+    let libraries = [];
+    if (!disk.scratch) {
+      libraries = anyPaths
+        ? libraryUsage.filter((library) => paths.some((path) => libraryOnDisk(library, path)))
+        : mediaGroups.length === 1 ? libraryUsage : [];
+    }
+    let label = "System disk";
+    if (!disk.scratch) {
+      const names = libraries.map((library) => library.name).filter(Boolean);
+      const folders = [...new Set(paths.map((path) => trimPath(path).split("/").pop()).filter(Boolean))];
+      label = names.length > 0 && names.length <= 3 ? names.join(" + ")
+        : names.length > 3 ? "Media storage"
+        : folders.length > 0 ? folders.join(" + ")
+        : group.disks.length > 1 ? "Media storage"
+        : humanize(disk.role || "Media disk");
+    }
+    const row = elementWithClass("div", `disk-row${disk.scratch ? "" : " media-disk"}`);
     const summary = elementWithClass("div", "disk-summary");
-    const label = disk.scratch ? "System disk" : humanize(disk.role || "Media disk");
     const name = elementWithClass("span", "disk-name", label);
-    if (disk.path) name.title = disk.path;
+    if (paths.length) name.title = paths.join("\n");
     row.classList.toggle("stale-data", disk.stale === true);
     const track = elementWithClass("div", "disk-track");
     const fill = elementWithClass("div", `disk-fill${percent >= 90 ? " disk-danger" : percent >= 80 ? " disk-warning" : ""}`);
     fill.style.width = `${percent}%`;
     track.append(fill);
+    const usedSize = formatGiB(used);
+    const totalSize = formatGiB(total);
     summary.append(
       name,
       track,
-      elementWithClass("span", "disk-value", `${Math.round(percent)}% used · ${used.toFixed(1)} of ${total.toFixed(1)} GiB${disk.stale ? " · Stale" : ""}`),
+      elementWithClass("span", "disk-value", `${Math.round(percent)}% used · ${usedSize.value} ${usedSize.unit} of ${totalSize.value} ${totalSize.unit}${disk.stale ? " · Stale" : ""}`),
     );
+    if (libraries.length > 0) {
+      const list = elementWithClass("ul", "disk-libraries", "");
+      list.setAttribute("aria-label", "Library sizes");
+      for (const library of libraries) {
+        const item = elementWithClass("li", "disk-library", "");
+        const share = total > 0 ? Math.min(100, (Number(library.bytes) / 1024 ** 3 / total) * 100) : 0;
+        const bar = elementWithClass("span", "disk-library-bar", "");
+        bar.style.setProperty("--share", `${share}%`);
+        item.append(
+          elementWithClass("span", "disk-library-name", library.name || "Library"),
+          bar,
+          elementWithClass("span", "disk-library-size", `${formatBytes(library.bytes)} · ${Number(library.files).toLocaleString()} files`),
+        );
+        list.append(item);
+      }
+      summary.append(list);
+    }
+    const freeSize = formatGiB(total - used);
     const free = elementWithClass("div", "disk-free");
     const amount = elementWithClass("div", "disk-free-amount");
     amount.append(
-      elementWithClass("strong", "disk-free-number", (total - used).toFixed(1)),
-      elementWithClass("span", "disk-free-unit", "GiB"),
+      elementWithClass("strong", "disk-free-number", freeSize.value),
+      elementWithClass("span", "disk-free-unit", freeSize.unit),
     );
-    free.setAttribute("aria-label", `${(total - used).toFixed(1)} GiB free${disk.stale ? ", stale data" : ""}`);
+    free.setAttribute("aria-label", `${freeSize.value} ${freeSize.unit} free${disk.stale ? ", stale data" : ""}`);
     free.append(amount, elementWithClass("span", "disk-free-label", "free"));
     row.append(summary, free);
     elements.diskList.append(row);

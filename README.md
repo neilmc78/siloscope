@@ -244,7 +244,7 @@ Under **Settings > System**, move the InfiniDysk panel up or down, toggle its in
 
 ## Monitoring and playback
 
-- **System:** resource charts, free disk space, top CPU processes, and the Silo API server build. Optional InfiniDysk monitoring adds fetched/served throughput, connections in use, and active filenames with fetching speed and bytes fetched. No provider names are displayed.
+- **System:** resource charts, free disk space (library folders on one shared mount appear once, named after their Silo libraries, with each library's size from Silo's catalog, refreshed every six hours), top CPU processes, and the Silo API server build. Optional InfiniDysk monitoring adds fetched/served throughput, connections in use, and active filenames with fetching speed and bytes fetched. No provider names are displayed.
 - **Playing:** Silo and Plex sessions together, including users, clients, progress, resolution, audio details, source-file bitrate, and direct-play/transcode status.
 - **History:** every play with All/Silo/Plex filters and expandable details: watch time, pause time, progress, client, platform, quality, LAN/WAN and IP. See [Playback history](#playback-history).
 - **Nodes:** playback-node health, resource usage, routed streams, and jobs. Stale or unavailable data is clearly marked.

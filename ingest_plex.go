@@ -855,7 +855,65 @@ func (ingest *plexIngester) syncAccounts(ctx context.Context) {
 			ingest.noteError(err)
 		}
 	}
+	// plex.tv's older user list (the one Tautulli reads) carries every shared
+	// user with a name; the avatar URL carries the plex.tv uuid.
+	if body, err := ingest.do(ctx, "https://plex.tv/api/users", "application/xml", nil); err == nil {
+		var users struct {
+			Users []struct {
+				ID       string `xml:"id,attr"`
+				Title    string `xml:"title,attr"`
+				Username string `xml:"username,attr"`
+				Email    string `xml:"email,attr"`
+				Thumb    string `xml:"thumb,attr"`
+			} `xml:"User"`
+		}
+		if xml.Unmarshal(body, &users) == nil {
+			for _, user := range users.Users {
+				if user.ID == "" || user.ID == ingest.ownerID {
+					continue
+				}
+				info := accountInfo{Source: "plex", ExternalID: user.ID, Username: user.Username, DisplayName: firstNonEmpty(user.Title, user.Username), Email: user.Email, Thumb: user.Thumb}
+				if match := plexThumbUUID.FindStringSubmatch(user.Thumb); match != nil {
+					info.PlexUUID = match[1]
+				}
+				_, err := ingest.store.ensureAccount(ctx, info, time.Time{})
+				ingest.noteError(err)
+			}
+		}
+	}
+	ingest.syncServerAccounts(ctx)
 	ingest.noteError(ingest.store.autoLink(ctx))
+}
+
+// syncServerAccounts names accounts from the Plex server's own account list.
+// It needs no internet access and uses the same ids as sessions and history.
+func (ingest *plexIngester) syncServerAccounts(ctx context.Context) {
+	body, err := ingest.get(ctx, "/accounts", nil, nil)
+	if err != nil {
+		ingest.noteError(fmt.Errorf("Plex account list unavailable: %w", err))
+		return
+	}
+	var container struct {
+		Accounts []struct {
+			ID   string `xml:"id,attr"`
+			Name string `xml:"name,attr"`
+		} `xml:"Account"`
+	}
+	if err := xml.Unmarshal(body, &container); err != nil {
+		ingest.noteError(err)
+		return
+	}
+	for _, account := range container.Accounts {
+		if account.ID == "" || account.ID == "0" || strings.TrimSpace(account.Name) == "" {
+			continue
+		}
+		externalID := account.ID
+		if ingest.ownerID != "" && externalID == ingest.ownerID {
+			externalID = "1"
+		}
+		_, err := ingest.store.ensureAccount(ctx, accountInfo{Source: "plex", ExternalID: externalID, DisplayName: account.Name, Username: account.Name}, time.Time{})
+		ingest.noteError(err)
+	}
 }
 
 // importHistory copies Plex's own watch log once, for plays before Siloscope
