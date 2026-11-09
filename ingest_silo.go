@@ -190,6 +190,7 @@ func (ingest *siloIngester) pages(ctx context.Context, path string, query url.Va
 }
 
 func (ingest *siloIngester) run(ctx context.Context) {
+	ingest.repairPosters(ctx)
 	ingest.syncAccounts(ctx)
 	ingest.syncHistory(ctx)
 	ingest.reconcileSessions(ctx)
@@ -414,7 +415,11 @@ func (ingest *siloIngester) recordSession(ctx context.Context, row siloSessionRo
 	}
 	fields.set("season_number", row.SeasonNumber)
 	fields.set("episode_number", row.EpisodeNumber)
-	fields.set("poster_url", row.PosterURL)
+	posterURL := ""
+	if ingest.app.posters != nil {
+		posterURL = ingest.app.posters.localURL(ctx, row.PosterURL)
+		fields.set("poster_url", posterURL)
+	}
 	fields.set("media_duration_s", row.FileDuration)
 	fields.set("end_position_s", row.Position)
 	if row.FileDuration != nil && row.Position != nil && *row.FileDuration > 0 {
@@ -460,7 +465,44 @@ func (ingest *siloIngester) recordSession(ctx context.Context, row siloSessionRo
 		fields.set("account_id", accountID)
 	}
 	id, _, err := ingest.store.upsertPlay(ctx, "silo", row.SessionID, fields)
+	if err == nil && posterURL != "" {
+		// Earlier plays of the same movie or series, including the imported
+		// Silo history, which carries no artwork, share this poster.
+		_, _ = ingest.store.db.ExecContext(ctx, `UPDATE plays SET poster_url = ?
+			WHERE source = 'silo' AND poster_url IS NULL
+			  AND (item_id = ? OR (? <> '' AND series_title = ?))`, posterURL, row.ContentID, row.SeriesName, row.SeriesName)
+	}
 	return id, state, err
+}
+
+// repairPosters converts poster links stored before the poster cache existed
+// (Silo-relative signed routes the browser could not load). Ones whose
+// signature has lapsed are cleared so the History tab shows its placeholder.
+func (ingest *siloIngester) repairPosters(ctx context.Context) {
+	if ingest.app.posters == nil {
+		return
+	}
+	rows, err := ingest.store.db.QueryContext(ctx, `SELECT DISTINCT poster_url FROM plays
+		WHERE source = 'silo' AND poster_url IS NOT NULL AND poster_url NOT LIKE '/api/silo/poster?%'`)
+	if err != nil {
+		return
+	}
+	var stale []string
+	for rows.Next() {
+		var raw string
+		if rows.Scan(&raw) == nil {
+			stale = append(stale, raw)
+		}
+	}
+	rows.Close()
+	for _, raw := range stale {
+		local := ingest.app.posters.localURL(ctx, raw)
+		var value any
+		if local != "" {
+			value = local
+		}
+		_, _ = ingest.store.db.ExecContext(ctx, `UPDATE plays SET poster_url = ? WHERE source = 'silo' AND poster_url = ?`, value, raw)
+	}
 }
 
 // reconcileSessions reads every live session. Rows missing from the list stay
