@@ -123,7 +123,7 @@ func (app *application) activityJSON(writer http.ResponseWriter, request *http.R
 	}
 	rows, err := app.store.db.QueryContext(request.Context(), `SELECT p.id, p.source, COALESCE(p.title, ''), COALESCE(p.series_title, ''),
 			p.season_number, p.episode_number, COALESCE(p.episode_title, ''), COALESCE(p.poster_url, ''),
-			COALESCE(a.display_name, a.username, ''), pe.id, COALESCE(pe.display_name, ''), COALESCE(p.profile_name, ''),
+			COALESCE(NULLIF(a.display_name, ''), NULLIF(a.username, ''), pe.display_name, ''), pe.id, COALESCE(pe.display_name, ''), COALESCE(p.profile_name, ''),
 			COALESCE(p.play_method, ''), p.status, COALESCE(p.state, ''), p.origin, COALESCE(p.end_reason, ''),
 			p.started_at, p.ended_at, p.updated_at, p.played_s, p.paused_s, p.percent_complete, p.watched,
 			COALESCE(p.client_name, p.client_product, ''), COALESCE(p.platform, ''), COALESCE(p.ip_address, ''), COALESCE(p.location, ''),

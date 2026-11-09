@@ -80,6 +80,8 @@ func newFakeServers(t *testing.T) (*fakeServers, *httptest.Server, *httptest.Ser
 			_, _ = w.Write([]byte(fake.plexSessions))
 		case "/library/metadata/500":
 			_, _ = w.Write([]byte(`<MediaContainer><Video ratingKey="500"><Media id="1" bitrate="20000" container="mkv" videoCodec="hevc" videoResolution="4k" width="3840" height="2160" audioCodec="truehd" audioChannels="8"><Part id="9"><Stream streamType="1" codec="hevc" colorTrc="smpte2084" displayTitle="4K HDR10"/><Stream streamType="2" codec="truehd" channels="8" languageCode="eng" selected="1"/></Part></Media></Video></MediaContainer>`))
+		case "/accounts":
+			_, _ = w.Write([]byte(`<MediaContainer><Account id="0" name=""/><Account id="1" name="Owner Neil"/><Account id="429535384" name="Jo"/></MediaContainer>`))
 		case "/status/sessions/history/all":
 			if r.Header.Get("X-Plex-Container-Start") == "0" {
 				_, _ = w.Write([]byte(`<MediaContainer size="1"><Video historyKey="/status/sessions/history/1" ratingKey="42" type="movie" title="Old Movie" viewedAt="1600000000" accountID="1" deviceID="3"/></MediaContainer>`))
@@ -262,6 +264,13 @@ func TestIngestersRecordPlaysAndLinkAccounts(t *testing.T) {
 		t.Fatal("auto link undid a manual unlink")
 	}
 
+	// Plex accounts known only by number get their names from the server's account list.
+	var joName string
+	_ = s.db.QueryRow(`SELECT COALESCE(p.display_name, '') FROM accounts a JOIN people p ON p.id = a.person_id WHERE a.source='plex' AND a.external_id='429535384'`).Scan(&joName)
+	if joName != "Jo" {
+		t.Fatalf("plex account 429535384 person name = %q, want Jo", joName)
+	}
+
 	// The History API serves all of it, newest first.
 	recorder := httptest.NewRecorder()
 	app.activityJSON(recorder, httptest.NewRequest(http.MethodGet, "/api/activity", nil))
@@ -306,5 +315,37 @@ func TestResumeGrouping(t *testing.T) {
 	}
 	if group(first) != first || group(second) != first || group(third) != third {
 		t.Fatalf("groups = %d %d %d", group(first), group(second), group(third))
+	}
+}
+
+func TestPersonNamesFollowAccountsUntilRenamed(t *testing.T) {
+	s, err := openStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.close()
+	ctx := context.Background()
+	name := func(id int64) (value string) {
+		_ = s.db.QueryRow(`SELECT p.display_name FROM accounts a JOIN people p ON p.id = a.person_id WHERE a.id = ?`, id).Scan(&value)
+		return
+	}
+	// History import knows only the number; a later account sync supplies the name.
+	id, _ := s.ensureAccount(ctx, accountInfo{Source: "plex", ExternalID: "429535384"}, time.Time{})
+	if got := name(id); got != "Plex user 429535384" {
+		t.Fatalf("placeholder name = %q", got)
+	}
+	_, _ = s.ensureAccount(ctx, accountInfo{Source: "plex", ExternalID: "429535384", DisplayName: "Jo"}, time.Time{})
+	_ = s.autoLink(ctx)
+	if got := name(id); got != "Jo" {
+		t.Fatalf("name after sync = %q, want Jo", got)
+	}
+	// A manual rename sticks.
+	var personID int64
+	_ = s.db.QueryRow(`SELECT person_id FROM accounts WHERE id = ?`, id).Scan(&personID)
+	_, _ = s.db.Exec(`UPDATE people SET display_name = 'Joanna', name_manual = 1 WHERE id = ?`, personID)
+	_, _ = s.ensureAccount(ctx, accountInfo{Source: "plex", ExternalID: "429535384", DisplayName: "Jo B"}, time.Time{})
+	_ = s.autoLink(ctx)
+	if got := name(id); got != "Joanna" {
+		t.Fatalf("manual name = %q, want Joanna", got)
 	}
 }

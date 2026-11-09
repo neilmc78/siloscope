@@ -97,6 +97,7 @@ type application struct {
 	cache         proxyCache
 	history       resourceHistory
 	store         *store
+	libraryUsage  libraryUsageCache
 	network       *hostNetworkSampler
 	processes     *processSampler
 	notifications *notificationService
@@ -159,6 +160,7 @@ func main() {
 		go app.ifd.run(ctx)
 	}
 	go app.runActivity(ctx)
+	go app.runLibraryUsage(ctx)
 	if app.store != nil {
 		go newSiloIngester(app, app.store).run(ctx)
 		if cfg.plexURL != nil {
@@ -284,6 +286,7 @@ func (a *application) routes() http.Handler {
 	mux.HandleFunc("GET /api/history", a.resourceHistoryJSON)
 	mux.HandleFunc("GET /api/activity", a.activityJSON)
 	mux.HandleFunc("GET /api/people", a.peopleJSON)
+	mux.HandleFunc("GET /api/library-usage", a.libraryUsageJSON)
 	mux.HandleFunc("POST /api/people", a.peopleJSON)
 	mux.HandleFunc("GET /api/processes", a.processCPUJSON)
 	mux.HandleFunc("GET /api/notifications", a.notificationsJSON)

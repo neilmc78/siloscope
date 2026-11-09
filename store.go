@@ -198,6 +198,8 @@ CREATE TABLE ingest_state (
 	updated_at INTEGER NOT NULL
 );
 `,
+	// 2: people names follow their accounts until an administrator renames them.
+	`ALTER TABLE people ADD COLUMN name_manual INTEGER NOT NULL DEFAULT 0;`,
 }
 
 // playColumns lists every plays column an ingester may set. upsertPlay only

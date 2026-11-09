@@ -15,6 +15,8 @@ const MonitorPreferences = (() => {
         ["disk.heading", "Heading", ".disk-heading", "disk"],
         ["disk.values", "Usage values", ".disk-summary", "disk"],
         ["disk.bars", "Usage bars", ".disk-track", "disk"],
+        ["disk.media", "Media disks", ".disk-row.media-disk", "disk"],
+        ["disk.libraries", "Library sizes", ".disk-libraries", "disk.media"],
         ["cpu", "CPU", ".cpu-panel"],
         ["cpu.heading", "Heading", ".cpu-panel .metric-section-heading", "cpu"],
         ["cpu.value", "Current usage", ".cpu-panel .metric-header > div", "cpu"],

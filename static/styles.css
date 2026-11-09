@@ -865,6 +865,40 @@ h2 {
   background: var(--disk-color);
 }
 
+.disk-libraries {
+  display: grid;
+  grid-template-columns: minmax(0, max-content) minmax(40px, 1fr) auto;
+  align-items: center;
+  gap: 6px 10px;
+  margin: 4px 0 0;
+  padding: 0;
+  font-size: 11px;
+  list-style: none;
+}
+
+.disk-library {
+  display: contents;
+}
+
+.disk-library-name {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.disk-library-bar {
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(to right, var(--disk-color) var(--share, 0%), rgb(255 255 255 / 0.08) var(--share, 0%));
+}
+
+.disk-library-size {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .disk-row:has(.disk-warning) {
   --disk-color: var(--warning);
 }

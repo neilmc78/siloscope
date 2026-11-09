@@ -37,7 +37,7 @@ func (s *store) ensureAccount(ctx context.Context, info accountInfo, seen time.T
 	var id int64
 	err := s.db.QueryRowContext(ctx, `SELECT id FROM accounts WHERE source = ? AND external_id = ?`, info.Source, info.ExternalID).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
-		name := firstNonEmpty(info.DisplayName, info.Username, info.Email, info.Source+" "+info.ExternalID)
+		name := firstNonEmpty(info.DisplayName, info.Username, info.Email, fallbackAccountName(info.Source, info.ExternalID))
 		tx, err := s.db.BeginTx(ctx, nil)
 		if err != nil {
 			return 0, err
@@ -99,7 +99,27 @@ func (s *store) autoLink(ctx context.Context) error {
 			return err
 		}
 	}
-	return nil
+	return s.refreshPersonNamesLocked(ctx)
+}
+
+// refreshPersonNamesLocked names each person after its best-named account:
+// a Plex display name first (usually the friendliest), then a Silo username,
+// then anything. People an administrator renamed keep their name.
+func (s *store) refreshPersonNamesLocked(ctx context.Context) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE people SET display_name = COALESCE((
+			SELECT COALESCE(NULLIF(a.display_name, ''), NULLIF(a.username, ''), NULLIF(a.email, ''))
+			FROM accounts a WHERE a.person_id = people.id
+			  AND COALESCE(NULLIF(a.display_name, ''), NULLIF(a.username, ''), NULLIF(a.email, '')) IS NOT NULL
+			ORDER BY a.source = 'plex' DESC, a.id LIMIT 1), display_name), updated_at = ?
+		WHERE name_manual = 0`, time.Now().UnixMilli())
+	return err
+}
+
+func fallbackAccountName(source, externalID string) string {
+	if source == "plex" {
+		return "Plex user " + externalID
+	}
+	return "Silo user " + externalID
 }
 
 // mergeAccountsLocked moves the accounts under the person of the first Plex
@@ -194,7 +214,7 @@ func (s *store) unlinkAccount(ctx context.Context, accountID int64) error {
 	}
 	defer tx.Rollback()
 	var name string
-	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(display_name, username, email, source || ' ' || external_id) FROM accounts WHERE id = ?`, accountID).Scan(&name); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(NULLIF(display_name, ''), NULLIF(username, ''), NULLIF(email, ''), CASE source WHEN 'plex' THEN 'Plex user ' ELSE 'Silo user ' END || external_id) FROM accounts WHERE id = ?`, accountID).Scan(&name); err != nil {
 		return err
 	}
 	now := time.Now().UnixMilli()
@@ -258,7 +278,7 @@ func (app *application) peopleJSON(writer http.ResponseWriter, request *http.Req
 				writeJSONError(writer, http.StatusBadRequest, "Name must be 1 to 100 characters")
 				return
 			}
-			_, err = app.store.db.ExecContext(ctx, `UPDATE people SET display_name = ?, updated_at = ? WHERE id = ?`, name, time.Now().UnixMilli(), input.PersonID)
+			_, err = app.store.db.ExecContext(ctx, `UPDATE people SET display_name = ?, name_manual = 1, updated_at = ? WHERE id = ?`, name, time.Now().UnixMilli(), input.PersonID)
 		default:
 			writeJSONError(writer, http.StatusBadRequest, "Unknown action")
 			return
