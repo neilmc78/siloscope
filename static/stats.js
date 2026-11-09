@@ -7,7 +7,13 @@ const MonitorStats = (() => {
   if (!root) return null;
 
   // Validated with the dataviz palette checker against the card surface.
-  const COLORS = { series: "#3987e5", transcode: "#d95926", direct_play: "#199e70", direct_stream: "#3987e5" };
+  // Series colours come from the theme (checked for colourblind separation).
+  const COLORS = {};
+  function readColors() {
+    const color = MonitorPreferences.color;
+    Object.assign(COLORS, { series: color("--series-1"), transcode: color("--series-2"), direct_play: color("--series-3"), direct_stream: color("--series-1") });
+  }
+  readColors();
   const METHOD_LABELS = { direct_play: "Direct play", direct_stream: "Direct stream", transcode: "Transcode" };
   const RANGES = [["7d", "Week"], ["30d", "Month"], ["365d", "Year"], ["all", "All"]];
   const SOURCES = [["all", "All"], ["silo", "Silo"], ["plex", "Plex"]];
@@ -611,6 +617,10 @@ const MonitorStats = (() => {
       loadedOnce = true;
       load();
     } else render();
+  });
+  window.addEventListener("monitor-theme-change", () => {
+    readColors();
+    if (loadedOnce && !root.closest("[data-view]")?.hidden) render();
   });
   let resizeFrame = 0;
   window.addEventListener("resize", () => {

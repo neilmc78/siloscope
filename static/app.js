@@ -98,9 +98,9 @@ function nextPaint() {
 }
 
 function redrawCharts() {
-  renderChart(elements.cpuChart, state.cpu, "#ee8b9d", elements.cpuRangeStart);
+  renderChart(elements.cpuChart, state.cpu, MonitorPreferences.color("--cpu"), elements.cpuRangeStart);
   renderNetworkChart();
-  renderChart(elements.ramChart, state.memory, "#4bc7b1", elements.ramRangeStart);
+  renderChart(elements.ramChart, state.memory, MonitorPreferences.color("--ram"), elements.ramRangeStart);
 }
 
 function formatUpdatedTime(date) {
@@ -301,7 +301,7 @@ function renderNetworkChart() {
   const visible = state.network.filter((point) => point.t >= start && point.t <= now);
   const maximum = bandwidthCeiling(visible);
 
-  for (const [key, color] of [["download", "#79b8ed"], ["upload", "#e6bd72"]]) {
+  for (const [key, color] of [["download", MonitorPreferences.color("--download")], ["upload", MonitorPreferences.color("--upload")]]) {
     const paths = seriesPaths(state.network, now, start, maximum, key);
     appendChartFill(svg, paths, color, key);
     for (const segment of paths) {
@@ -345,7 +345,7 @@ function updateScrub(svg, clientX) {
   const bounds = svg.getBoundingClientRect();
   const ratio = Math.min(1, Math.max(0, (clientX - bounds.left) / bounds.width));
   const markerRadius = 6 + (bounds.height > 0 ? 0.75 * 170 / bounds.height : 0.75);
-  const trackingColor = view.kind === "network" ? "#b8b8b8" : svg === elements.ramChart ? "#4bc7b1" : "#ee8b9d";
+  const trackingColor = view.kind === "network" ? MonitorPreferences.color("--crosshair") : svg === elements.ramChart ? MonitorPreferences.color("--ram") : MonitorPreferences.color("--cpu");
   const targetTime = view.start + ratio * (view.now - view.start);
   const sample = view.points.reduce((nearest, point) => (
     Math.abs(point.t - targetTime) < Math.abs(nearest.t - targetTime) ? point : nearest
@@ -355,7 +355,7 @@ function updateScrub(svg, clientX) {
   if (view.kind === "network") {
     svg.querySelectorAll(".chart-crosshair, .chart-scrub-point").forEach((element) => element.remove());
     svg.append(svgElement("line", { x1: x, y1: 0, x2: x, y2: 170, class: "chart-crosshair", stroke: trackingColor }));
-    for (const [key, color] of [["download", "#79b8ed"], ["upload", "#e6bd72"]]) {
+    for (const [key, color] of [["download", MonitorPreferences.color("--download")], ["upload", MonitorPreferences.color("--upload")]]) {
       if (sample[key] === null) continue;
       const y = 170 - (sample[key] / view.maximum) * 170;
       svg.append(svgElement("ellipse", {
@@ -679,16 +679,16 @@ function showResourceSample(payload, hostCPU = null) {
   setLiveReadout(elements.ramChart, ramValue, ramDetail);
   showDisks(system.disks);
 
-  renderChart(elements.cpuChart, state.cpu, "#ee8b9d", elements.cpuRangeStart);
-  renderChart(elements.ramChart, state.memory, "#4bc7b1", elements.ramRangeStart);
+  renderChart(elements.cpuChart, state.cpu, MonitorPreferences.color("--cpu"), elements.cpuRangeStart);
+  renderChart(elements.ramChart, state.memory, MonitorPreferences.color("--ram"), elements.ramRangeStart);
 }
 
 function recordResourceGap() {
   const now = Date.now();
   appendSample(state.cpu, { t: now, value: null });
   appendSample(state.memory, { t: now, value: null });
-  renderChart(elements.cpuChart, state.cpu, "#ee8b9d", elements.cpuRangeStart);
-  renderChart(elements.ramChart, state.memory, "#4bc7b1", elements.ramRangeStart);
+  renderChart(elements.cpuChart, state.cpu, MonitorPreferences.color("--cpu"), elements.cpuRangeStart);
+  renderChart(elements.ramChart, state.memory, MonitorPreferences.color("--ram"), elements.ramRangeStart);
 }
 
 function elementWithClass(tag, className, text) {
@@ -1402,6 +1402,7 @@ window.addEventListener("pageshow", async () => {
   redrawCharts();
 });
 window.addEventListener("resize", () => window.requestAnimationFrame(redrawCharts));
+window.addEventListener("monitor-theme-change", () => window.requestAnimationFrame(redrawCharts));
 window.addEventListener("monitor-settings-change", event => {
   if ([2, 3, 4, 5].includes(event.detail?.chartMinutes)) state.chartMinutes = event.detail.chartMinutes;
   window.requestAnimationFrame(() => {
@@ -1420,8 +1421,8 @@ for (const button of elements.tabButtons) {
 setupChartScrubbing(elements.cpuChart, elements.cpuValue, elements.cpuDetail);
 setupChartScrubbing(elements.ramChart, elements.ramValue, elements.ramDetail);
 setupNetworkChartScrubbing();
-renderChart(elements.cpuChart, state.cpu, "#ee8b9d", elements.cpuRangeStart);
-renderChart(elements.ramChart, state.memory, "#4bc7b1", elements.ramRangeStart);
+renderChart(elements.cpuChart, state.cpu, MonitorPreferences.color("--cpu"), elements.cpuRangeStart);
+renderChart(elements.ramChart, state.memory, MonitorPreferences.color("--ram"), elements.ramRangeStart);
 renderNetworkChart();
 
 async function initialize() {

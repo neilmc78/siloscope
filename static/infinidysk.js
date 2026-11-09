@@ -25,7 +25,7 @@ if (typeof document !== "undefined") (() => {
   let start = 0;
   let now = 0;
   let maximum = 1;
-  const colors = [["download", "#79b8ed"], ["upload", "#e6bd72"]];
+  const palette = () => [["download", MonitorPreferences.color("--download")], ["upload", MonitorPreferences.color("--upload")]];
 
   function metric(id, value) {
     const target = element(id);
@@ -55,8 +55,8 @@ if (typeof document !== "undefined") (() => {
     const timestamp = start + ratio * (now - start);
     const point = points.reduce((nearest, candidate) => Math.abs(candidate.t - timestamp) < Math.abs(nearest.t - timestamp) ? candidate : nearest);
     const position = (point.t - start) / (now - start) * 600;
-    chart.append(svgElement("line", { x1: position, x2: position, y1: 0, y2: 170, class: "chart-crosshair", stroke: "#b8b8b8" }));
-    for (const [key, color] of colors) {
+    chart.append(svgElement("line", { x1: position, x2: position, y1: 0, y2: 170, class: "chart-crosshair", stroke: MonitorPreferences.color("--crosshair") }));
+    for (const [key, color] of palette()) {
       if (point[key] != null) chart.append(svgElement("ellipse", { cx: position, cy: 170 - point[key] / maximum * 170, rx: circularMarkerRadiusX(chart, 6), ry: 6, fill: color, class: "chart-scrub-point" }));
     }
     readout(point);
@@ -76,7 +76,7 @@ if (typeof document !== "undefined") (() => {
       const position = 170 - percent / 100 * 170;
       chart.append(svgElement("line", { x1: 0, x2: 600, y1: position, y2: position, class: "chart-grid" }));
     }
-    for (const [key, color] of colors) {
+    for (const [key, color] of palette()) {
       const paths = seriesPaths(points, now, start, maximum, key);
       appendChartFill(chart, paths, color, key);
       for (const segment of paths) chart.append(svgElement("path", { d: smoothPath(segment), class: "chart-line", stroke: color }));
@@ -150,6 +150,7 @@ if (typeof document !== "undefined") (() => {
   chart.addEventListener("pointerdown", event => { selectedX = event.clientX; chart.setPointerCapture(event.pointerId); scrub(); });
   for (const name of ["pointerleave", "pointerup", "pointercancel"]) chart.addEventListener(name, () => { selectedX = null; scrub(); });
   window.addEventListener("monitor-settings-change", event => { minutes = event.detail.chartMinutes || 5; if (snapshot) renderChart(); });
+  window.addEventListener("monitor-theme-change", () => { if (snapshot) renderChart(); });
   document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
   refresh();
   setInterval(refresh, 2000);

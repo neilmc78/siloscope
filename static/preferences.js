@@ -4,6 +4,20 @@ const MonitorPreferences = (() => {
   const storageKey = "silo-monitor.ui.v1";
   const systemOrder = ["disk", "cpu", "network", "ifd", "memory"];
   const navOrder = ["system", "playing", "stats", "library", "infrastructure", "settings"];
+  // [key, label, description, preview: background, surface, accent, text]
+  const themes = [
+    ["rose", "Rose", "The original dark theme", ["#100c0e", "#231a1e", "#ee8b9d", "#f5f0f2"]],
+    ["midnight", "Midnight", "Deep navy, cool blue", ["#0b0f17", "#151c28", "#6cb6ff", "#eef2f8"]],
+    ["light", "Light", "Bright surfaces for daytime", ["#f6f3f4", "#ffffff", "#c2445e", "#22171b"]],
+    ["contrast", "High contrast", "Black, white and bold edges", ["#000000", "#000000", "#ffd600", "#ffffff"]],
+    ["console", "Console", "Green phosphor terminal", ["#050805", "#0a110a", "#33ff66", "#b6ffb6"]],
+    ["matrix", "Matrix", "Falling code in the background", ["#000000", "#03200a", "#00ff41", "#c8ffd4"]],
+    ["synthwave", "Synthwave", "Neon pink and cyan", ["#14081f", "#20102f", "#ff4fd8", "#2de2e6"]],
+  ];
+  const accents = [
+    ["#ee8b9d", "Rose"], ["#ff6b6b", "Red"], ["#ff9f43", "Orange"], ["#f3bd4f", "Amber"], ["#a3e635", "Lime"],
+    ["#43d3a2", "Green"], ["#2dd4bf", "Teal"], ["#22d3ee", "Cyan"], ["#60a5fa", "Blue"], ["#a78bfa", "Violet"], ["#f472b6", "Pink"],
+  ];
   const groups = {
     system: {
       label: "System",
@@ -98,7 +112,7 @@ const MonitorPreferences = (() => {
   };
 
   function normalize(raw) {
-    const result = { visibility: {}, systemOrder: [...systemOrder], navOrder: [...navOrder], navHidden: [], historyFilter: "all", chartHeight: 140, chartMinutes: 5 };
+    const result = { visibility: {}, systemOrder: [...systemOrder], navOrder: [...navOrder], navHidden: [], historyFilter: "all", chartHeight: 140, chartMinutes: 5, theme: "rose", accent: "", effects: true };
     for (const [group, definition] of Object.entries(groups)) {
       for (const [key] of definition.options) {
         const fullKey = `${group}.${key}`;
@@ -111,6 +125,9 @@ const MonitorPreferences = (() => {
     if (Array.isArray(raw?.navOrder)) result.navOrder = [...new Set([...raw.navOrder.filter(key => navOrder.includes(key)), ...navOrder])];
     // Settings can never be hidden: it is the only way back to this option.
     if (Array.isArray(raw?.navHidden)) result.navHidden = [...new Set(raw.navHidden.filter(key => navOrder.includes(key) && key !== "settings"))];
+    if (themes.some(([key]) => key === raw?.theme)) result.theme = raw.theme;
+    if (typeof raw?.accent === "string" && /^#[0-9a-f]{6}$/i.test(raw.accent)) result.accent = raw.accent.toLowerCase();
+    if (typeof raw?.effects === "boolean") result.effects = raw.effects;
     if (["all", "silo", "plex"].includes(raw?.historyFilter)) result.historyFilter = raw.historyFilter;
     if (Number.isFinite(raw?.chartHeight)) result.chartHeight = Math.min(220, Math.max(100, raw.chartHeight));
     if ([2, 3, 4, 5].includes(raw?.chartMinutes)) result.chartMinutes = raw.chartMinutes;
@@ -133,7 +150,33 @@ const MonitorPreferences = (() => {
     catch { return false; }
   }
 
-  return { storageKey, systemOrder, navOrder, groups, normalize, enabled, load, save };
+  // applyTheme sets the theme, accent and effects on <html>; CSS does the rest.
+  function applyTheme(preferences) {
+    const root = document.documentElement;
+    root.dataset.theme = preferences.theme;
+    root.dataset.effects = preferences.effects ? "on" : "off";
+    for (const name of ["--primary", "--cpu", "--primary-soft"]) root.style.removeProperty(name);
+    if (preferences.accent) {
+      root.style.setProperty("--primary", preferences.accent);
+      root.style.setProperty("--cpu", preferences.accent);
+      root.style.setProperty("--primary-soft", `color-mix(in srgb, ${preferences.accent} 18%, var(--surface))`);
+    }
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.content = color("--background") || "#171113";
+    window.dispatchEvent(new CustomEvent("monitor-theme-change", { detail: { theme: preferences.theme, effects: preferences.effects } }));
+  }
+
+  // color reads a theme token, for SVG attributes that cannot take var().
+  function color(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  }
+
+  // Apply the stored theme as soon as this script runs, before the app draws.
+  if (typeof document !== "undefined") {
+    try { applyTheme(load(window.localStorage)); } catch { applyTheme(normalize(null)); }
+  }
+
+  return { storageKey, systemOrder, navOrder, groups, themes, accents, normalize, enabled, load, save, applyTheme, color };
 })();
 
 if (typeof module !== "undefined" && module.exports) module.exports = MonitorPreferences;

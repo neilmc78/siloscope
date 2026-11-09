@@ -304,4 +304,5 @@ Select one or more Silo or Plex sessions in **Playing**, then choose **Terminate
 
 - **Transcoder:** control transcoding and 4K permissions, hardware acceleration, HDR tone mapping, buffering, throttling, and playback routing.
 - **Restart:** see pending restart requirements and restart Silo after confirmation. Restarting can interrupt playback.
+- **Appearance:** choose a theme (Rose, Midnight, Light, High contrast, Console, Matrix or Synthwave), an accent colour from presets or a custom colour, and whether animated effects run (Console scanlines and cursor, Matrix code rain). Saved per device; reduced-motion devices always get still effects.
 - **Display:** choose visible panels and playback details, reorder all five tabs, and adjust chart height and time range. Preferences are saved per device.
