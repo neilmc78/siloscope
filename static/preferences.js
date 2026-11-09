@@ -98,7 +98,7 @@ const MonitorPreferences = (() => {
   };
 
   function normalize(raw) {
-    const result = { visibility: {}, systemOrder: [...systemOrder], navOrder: [...navOrder], historyFilter: "all", chartHeight: 140, chartMinutes: 5 };
+    const result = { visibility: {}, systemOrder: [...systemOrder], navOrder: [...navOrder], navHidden: [], historyFilter: "all", chartHeight: 140, chartMinutes: 5 };
     for (const [group, definition] of Object.entries(groups)) {
       for (const [key] of definition.options) {
         const fullKey = `${group}.${key}`;
@@ -109,6 +109,8 @@ const MonitorPreferences = (() => {
       result.systemOrder = [...new Set([...raw.systemOrder.filter(key => systemOrder.includes(key)), ...systemOrder])];
     }
     if (Array.isArray(raw?.navOrder)) result.navOrder = [...new Set([...raw.navOrder.filter(key => navOrder.includes(key)), ...navOrder])];
+    // Settings can never be hidden: it is the only way back to this option.
+    if (Array.isArray(raw?.navHidden)) result.navHidden = [...new Set(raw.navHidden.filter(key => navOrder.includes(key) && key !== "settings"))];
     if (["all", "silo", "plex"].includes(raw?.historyFilter)) result.historyFilter = raw.historyFilter;
     if (Number.isFinite(raw?.chartHeight)) result.chartHeight = Math.min(220, Math.max(100, raw.chartHeight));
     if ([2, 3, 4, 5].includes(raw?.chartMinutes)) result.chartMinutes = raw.chartMinutes;

@@ -55,7 +55,9 @@ test("graph duration accepts only supported minute options", () => {
 });
 test("navigation order and history filter normalize and persist", () => {
   const value = preferences.normalize({ navOrder: ["settings", "bad", "settings"], historyFilter: "plex" });
-  assert.deepEqual(value.navOrder, ["settings", "system", "playing", "library", "infrastructure"]);
+  assert.deepEqual(value.navOrder, ["settings", "system", "playing", "stats", "library", "infrastructure"]);
   assert.equal(value.historyFilter, "plex");
+  assert.deepEqual(preferences.normalize({ navHidden: ["library", "settings", "bad", "library", "infrastructure"] }).navHidden, ["library", "infrastructure"]);
+  assert.deepEqual(preferences.normalize({}).navHidden, []);
   assert.equal(preferences.normalize({ historyFilter: "bad" }).historyFilter, "all");
 });

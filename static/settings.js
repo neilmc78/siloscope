@@ -73,8 +73,13 @@
     const tabs = document.querySelector(".tab-list");
     for (const key of preferences.navOrder) {
       const tab = tabs.querySelector(`[data-tab="${key}"]`);
-      if (tab) tabs.append(tab);
+      if (!tab) continue;
+      tab.hidden = preferences.navHidden.includes(key);
+      tabs.append(tab);
     }
+    // If the open view's tab was hidden, move to the first visible tab.
+    const active = tabs.querySelector(".tab-button.active");
+    if (active?.hidden) tabs.querySelector(".tab-button:not([hidden])")?.click();
     document.documentElement.style.setProperty("--chart-height", `${preferences.chartHeight}px`);
     window.dispatchEvent(new CustomEvent("monitor-settings-change", { detail: { chartMinutes: preferences.chartMinutes, historyFilter: preferences.historyFilter } }));
   }
@@ -97,8 +102,25 @@
       const order = makeSection("Bottom navigation");
       preferences.navOrder.forEach((key, index) => {
         const label = ({ system: "System", playing: "Playing", stats: "Stats", infrastructure: "Nodes", settings: "Settings", library: "Library" })[key];
-        const row = make("div", "settings-order-row");
+        const hidden = preferences.navHidden.includes(key);
+        const row = make("div", hidden ? "settings-order-row is-hidden" : "settings-order-row");
         row.append(make("span", "", label));
+        const eye = make("button", "icon-button");
+        eye.type = "button";
+        eye.title = key === "settings" ? "Settings is always shown" : `${hidden ? "Show" : "Hide"} ${label} tab`;
+        eye.setAttribute("aria-label", eye.title);
+        eye.setAttribute("aria-pressed", String(hidden));
+        eye.dataset.order = `${key}-visibility`;
+        eye.disabled = key === "settings";
+        const eyeIcon = make("span", `ui-icon ${hidden ? "icon-eye-off" : "icon-eye"}`);
+        eyeIcon.setAttribute("aria-hidden", "true");
+        eye.append(eyeIcon);
+        eye.addEventListener("click", () => {
+          preferences.navHidden = hidden ? preferences.navHidden.filter(item => item !== key) : [...preferences.navHidden, key];
+          commit();
+          renderOptions(`${key}-visibility`);
+        });
+        row.append(eye);
         for (const [direction, delta] of [["up", -1], ["down", 1]]) {
           const button = make("button", "icon-button");
           button.type = "button";
@@ -256,7 +278,10 @@
   document.getElementById("reset-tab-settings").addEventListener("click", () => {
     if (!activeGroup || activeGroup === "transcoder" || activeGroup === "notifications") return;
     for (const [key] of model.groups[activeGroup]?.options || []) preferences.visibility[`${activeGroup}.${key}`] = true;
-    if (activeGroup === "navigation") preferences.navOrder = [...model.navOrder];
+    if (activeGroup === "navigation") {
+      preferences.navOrder = [...model.navOrder];
+      preferences.navHidden = [];
+    }
     if (activeGroup === "system") {
       preferences.systemOrder = [...model.systemOrder];
       preferences.chartHeight = 140;

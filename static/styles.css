@@ -420,9 +420,13 @@ h1 {
 .settings-group .settings-duration { flex-wrap: wrap; }
 .settings-group .settings-duration:last-child { margin-bottom: 0; }
 .settings-fieldset legend { padding: 0 0 8px; color: var(--muted); font-size: 12px; font-weight: 700; }
-.settings-order-row { display: grid; grid-template-columns: minmax(0, 1fr) 44px 44px; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.settings-order-row { display: grid; grid-template-columns: minmax(0, 1fr) 44px 44px 44px; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--border); }
 .settings-order-row .icon-button { width: 44px; height: 44px; }
 .settings-order-row button:disabled { opacity: 0.25; cursor: default; }
+.settings-order-row.is-hidden > span:first-child { color: var(--muted); text-decoration: line-through; text-decoration-color: rgb(169 149 158 / 0.5); }
+.icon-eye { --icon-source: url("/icons/eye.svg"); }
+.icon-eye-off { --icon-source: url("/icons/eye-off.svg"); }
+.tab-button[hidden] { display: none; }
 .settings-toggle { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 52px; padding: 10px 0; border-bottom: 1px solid rgb(255 255 255 / 0.07); cursor: pointer; }
 .settings-toggle span { overflow-wrap: anywhere; }
 .settings-child { padding-left: 20px; color: var(--muted); font-size: 14px; }
