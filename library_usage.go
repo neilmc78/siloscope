@@ -29,6 +29,14 @@ type libraryUsageCache struct {
 	mu        sync.RWMutex
 	libraries []libraryUsage
 	updatedAt time.Time
+	lastError string
+}
+
+func (a *application) libraryUsageFailed(err error) {
+	log.Printf("library usage: %v", err)
+	a.libraryUsage.mu.Lock()
+	a.libraryUsage.lastError = err.Error()
+	a.libraryUsage.mu.Unlock()
 }
 
 const libraryUsageInterval = 6 * time.Hour
@@ -72,7 +80,7 @@ func (a *application) refreshLibraryUsage(ctx context.Context) {
 		return nil
 	})
 	if err != nil {
-		log.Printf("library usage: %v", err)
+		a.libraryUsageFailed(err)
 		return
 	}
 	seen := map[string]bool{}
@@ -102,7 +110,7 @@ func (a *application) refreshLibraryUsage(ctx context.Context) {
 			return nil
 		})
 		if err != nil {
-			log.Printf("library usage: %v", err)
+			a.libraryUsageFailed(err)
 			return
 		}
 	}
@@ -114,7 +122,9 @@ func (a *application) refreshLibraryUsage(ctx context.Context) {
 	a.libraryUsage.mu.Lock()
 	a.libraryUsage.libraries = result
 	a.libraryUsage.updatedAt = time.Now()
+	a.libraryUsage.lastError = ""
 	a.libraryUsage.mu.Unlock()
+	log.Printf("library usage: %d libraries, %d files totalled", len(result), len(seen))
 }
 
 func (a *application) libraryUsageJSON(writer http.ResponseWriter, _ *http.Request) {
@@ -124,8 +134,9 @@ func (a *application) libraryUsageJSON(writer http.ResponseWriter, _ *http.Reque
 	defer a.libraryUsage.mu.RUnlock()
 	payload := struct {
 		UpdatedAt *time.Time     `json:"updated_at,omitempty"`
+		Error     string         `json:"error,omitempty"`
 		Libraries []libraryUsage `json:"libraries"`
-	}{Libraries: a.libraryUsage.libraries}
+	}{Libraries: a.libraryUsage.libraries, Error: a.libraryUsage.lastError}
 	if !a.libraryUsage.updatedAt.IsZero() {
 		payload.UpdatedAt = &a.libraryUsage.updatedAt
 	}

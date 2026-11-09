@@ -951,13 +951,29 @@ h2 {
 }
 
 .network-header {
-  align-items: flex-end;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
 }
 
-.network-values {
-  display: flex;
-  align-items: flex-end;
-  gap: 22px;
+/* Fixed, equal columns: a longer reading never wraps or moves the panel.
+   Qualified to outrank .metric-header > div, which makes it a flex row. */
+.network-header .network-values {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 150px));
+  align-items: end;
+  gap: 16px;
+  min-width: 0;
+}
+
+#network-detail {
+  white-space: nowrap;
+  text-align: right;
+}
+
+@media (max-width: 459px) {
+  .network-header { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  #network-detail { text-align: left; }
 }
 
 .network-value {
@@ -971,8 +987,15 @@ h2 {
   font-weight: 700;
 }
 
+.network-value {
+  min-width: 0;
+}
+
 .network-value strong {
-  font-size: 20px;
+  overflow: hidden;
+  font-size: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .network-download strong,

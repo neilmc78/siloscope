@@ -533,7 +533,7 @@ function formatBytes(bytes) {
 }
 
 function trimPath(path) {
-  return String(path || "").replace(/\/+$/, "");
+  return String(path || "").replace(/\/+$/, "").toLowerCase();
 }
 
 function libraryOnDisk(library, diskPath) {
@@ -580,14 +580,15 @@ function showDisks(disks) {
     const paths = group.disks.map((item) => item.path).filter(Boolean);
     let libraries = [];
     if (!disk.scratch) {
-      libraries = anyPaths
-        ? libraryUsage.filter((library) => paths.some((path) => libraryOnDisk(library, path)))
-        : mediaGroups.length === 1 ? libraryUsage : [];
+      libraries = anyPaths ? libraryUsage.filter((library) => paths.some((path) => libraryOnDisk(library, path))) : [];
+      // One shared media mount and no path match (paths seen differently by
+      // Silo's scanner and its disk sampler): every library lives on it.
+      if (libraries.length === 0 && mediaGroups.length === 1) libraries = libraryUsage;
     }
     let label = "System disk";
     if (!disk.scratch) {
       const names = libraries.map((library) => library.name).filter(Boolean);
-      const folders = [...new Set(paths.map((path) => trimPath(path).split("/").pop()).filter(Boolean))];
+      const folders = [...new Set(paths.map((path) => String(path).replace(/\/+$/, "").split("/").pop()).filter(Boolean))];
       label = names.length > 0 && names.length <= 3 ? names.join(" + ")
         : names.length > 3 ? "Media storage"
         : folders.length > 0 ? folders.join(" + ")
