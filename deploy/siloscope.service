@@ -1,0 +1,40 @@
+[Unit]
+Description=Siloscope dashboard for Silo and Plex
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=siloscope
+Group=siloscope
+EnvironmentFile=/etc/siloscope/siloscope.env
+ExecStart=/usr/local/bin/siloscope
+Restart=on-failure
+RestartSec=5
+
+# Data lives in /var/lib/siloscope (history database, notification and
+# replacement records). Back it up to keep history.
+StateDirectory=siloscope
+StateDirectoryMode=0700
+Environment=ACTIVITY_DATA_DIR=/var/lib/siloscope/activity
+Environment=PUSH_DATA_DIR=/var/lib/siloscope/push
+Environment=REPLACEMENT_DATA_DIR=/var/lib/siloscope/replacements
+Environment=GOMEMLIMIT=64MiB
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

@@ -151,6 +151,36 @@ volumes:
 
 Replace the example name with your actual volume name and keep the service mount as `notification-data:/data`.
 
+## Run without Docker
+
+Each version tag (`v*`) publishes static Linux binaries for AMD64 and ARM64 on the repository's Releases page, with a systemd unit and an example configuration. Any Linux machine or container that can reach Silo works, including a small LXC container.
+
+```sh
+VERSION=v0.1.0   # the release to install
+ARCH=amd64       # or arm64
+BASE=https://github.com/neilmc78/siloscope/releases/download/$VERSION
+
+useradd --system --no-create-home --shell /usr/sbin/nologin siloscope
+curl -fL -o /usr/local/bin/siloscope "$BASE/siloscope-linux-$ARCH"
+chmod 755 /usr/local/bin/siloscope
+curl -fL -o /etc/systemd/system/siloscope.service "$BASE/siloscope.service"
+install -d -m 700 /etc/siloscope
+curl -fL -o /etc/siloscope/siloscope.env "$BASE/siloscope.env.example"
+chmod 600 /etc/siloscope/siloscope.env
+```
+
+Edit `/etc/siloscope/siloscope.env`, then start it:
+
+```sh
+systemctl daemon-reload
+systemctl enable --now siloscope
+journalctl -u siloscope -f
+```
+
+Data is kept in `/var/lib/siloscope`. To upgrade, download the new binary over `/usr/local/bin/siloscope` and run `systemctl restart siloscope`.
+
+Without `HOST_PROC_DIR` and `HOST_NETWORK_STATS_DIR`, CPU, memory, disk and bandwidth come from Silo's own statistics and the top-processes panel is unavailable. That is the right setup when Siloscope runs on a different machine from Silo.
+
 ## Configuration
 
 | Variable | Default | Purpose |
