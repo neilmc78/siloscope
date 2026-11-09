@@ -292,6 +292,8 @@ func (a *application) routes() http.Handler {
 	mux.HandleFunc("GET /api/activity", a.activityJSON)
 	mux.HandleFunc("GET /api/people", a.peopleJSON)
 	mux.HandleFunc("GET /api/library-usage", a.libraryUsageJSON)
+	mux.HandleFunc("GET /api/stats", a.statsJSON)
+	mux.HandleFunc("GET /api/stats/users", a.usersJSON)
 	mux.HandleFunc("POST /api/people", a.peopleJSON)
 	mux.HandleFunc("GET /api/processes", a.processCPUJSON)
 	mux.HandleFunc("GET /api/notifications", a.notificationsJSON)

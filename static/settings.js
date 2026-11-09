@@ -96,7 +96,7 @@
     if (activeGroup === "navigation") {
       const order = makeSection("Bottom navigation");
       preferences.navOrder.forEach((key, index) => {
-        const label = ({ system: "System", playing: "Playing", infrastructure: "Nodes", settings: "Settings", library: "Library" })[key];
+        const label = ({ system: "System", playing: "Playing", stats: "Stats", infrastructure: "Nodes", settings: "Settings", library: "Library" })[key];
         const row = make("div", "settings-order-row");
         row.append(make("span", "", label));
         for (const [direction, delta] of [["up", -1], ["down", 1]]) {

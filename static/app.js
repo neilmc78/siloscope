@@ -30,7 +30,7 @@ const state = {
   freshness: {},
   freshnessTimer: null,
   view: "system",
-  viewScroll: { system: 0, infrastructure: 0, playing: 0, history: 0, settings: 0, library: 0 },
+  viewScroll: { system: 0, infrastructure: 0, playing: 0, history: 0, stats: 0, settings: 0, library: 0 },
 };
 
 const chartViews = new Map();
