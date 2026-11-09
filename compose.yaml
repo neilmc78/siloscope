@@ -1,11 +1,12 @@
 services:
   silo-monitor:
-    image: ghcr.io/safetyp1/silo-monitor:latest
+    image: ghcr.io/neilmc78/silo-monitor:latest
     pull_policy: always
     restart: unless-stopped
     environment:
       SILO_URL: ${SILO_URL:?Set SILO_URL in .env}
       SILO_API_KEY: ${SILO_API_KEY:?Set SILO_API_KEY in .env}
+      SILO_MONITOR_API_KEY: ${SILO_MONITOR_API_KEY:-}
       PLEX_URL: ${PLEX_URL:-}
       PLEX_TOKEN: ${PLEX_TOKEN:-}
       IFD_URL: ${IFD_URL:-}
