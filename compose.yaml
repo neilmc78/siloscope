@@ -1,6 +1,6 @@
 services:
   silo-monitor:
-    image: ghcr.io/safetyp1/silo-monitor:latest
+    image: ghcr.io/neilmc78/silo-monitor:latest
     pull_policy: always
     restart: unless-stopped
     environment:
