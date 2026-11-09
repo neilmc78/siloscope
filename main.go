@@ -98,6 +98,7 @@ type application struct {
 	history       resourceHistory
 	store         *store
 	libraryUsage  libraryUsageCache
+	posters       *posterCache
 	network       *hostNetworkSampler
 	processes     *processSampler
 	notifications *notificationService
@@ -127,6 +128,10 @@ func main() {
 			log.Fatal("playback history storage could not be initialized: ", err)
 		}
 		defer app.store.close()
+		app.posters, err = newPosterCache(app, filepath.Join(directory, "posters"))
+		if err != nil {
+			log.Fatal("poster cache could not be initialized: ", err)
+		}
 	} else {
 		log.Print("ACTIVITY_DATA_DIR is unset; playback history is disabled")
 	}
@@ -291,7 +296,8 @@ func (a *application) routes() http.Handler {
 	mux.HandleFunc("GET /api/processes", a.processCPUJSON)
 	mux.HandleFunc("GET /api/notifications", a.notificationsJSON)
 	mux.HandleFunc("POST /api/notifications", a.notificationsJSON)
-	mux.HandleFunc("GET /api/sessions", a.proxyJSON("sessions", "/api/v2/admin/sessions", a.config.cacheTTL))
+	mux.HandleFunc("GET /api/sessions", a.siloSessionsJSON)
+	mux.HandleFunc("GET /api/silo/poster", a.siloPoster)
 	mux.HandleFunc("GET /api/plex/sessions", a.plexSessionsJSON)
 	mux.HandleFunc("GET /api/plex/poster", a.plexPoster)
 	mux.HandleFunc("GET /api/nodes", a.proxyJSON("nodes", "/api/v2/admin/nodes", a.config.cacheTTL))

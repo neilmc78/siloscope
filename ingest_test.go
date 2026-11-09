@@ -46,6 +46,13 @@ func newFakeServers(t *testing.T) (*fakeServers, *httptest.Server, *httptest.Ser
 			page(fake.siloHistory)
 		case "/api/v2/admin/sessions":
 			page(fake.siloSessions)
+		case "/api/v1/images/poster-2.png":
+			if r.Header.Get("Authorization") != "Bearer admin-key" || r.URL.Query().Get("sig") == "" {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+			w.Header().Set("Content-Type", "image/png")
+			_, _ = w.Write(append([]byte("\x89PNG\r\n\x1a\n"), make([]byte, 64)...))
 		case "/api/v2/events/ws-ticket":
 			if r.Header.Get("Authorization") != "Bearer monitor-key" {
 				w.WriteHeader(http.StatusForbidden)
@@ -146,6 +153,9 @@ func TestIngestersRecordPlaysAndLinkAccounts(t *testing.T) {
 	}
 	defer s.close()
 	app.store = s
+	if app.posters, err = newPosterCache(app, t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go newSiloIngester(app, s).run(ctx)
@@ -176,11 +186,35 @@ func TestIngestersRecordPlaysAndLinkAccounts(t *testing.T) {
 	defer siloSocket.Close()
 	row := map[string]any{"session_id": "live-1", "lifecycle_seq": 5, "user_id": "7", "username": "sam", "content_id": "movie-2", "media_title": "Live Film",
 		"media_type": "movie", "is_paused": false, "started_at": time.Now().UTC().Format(time.RFC3339), "position_seconds": 10, "file_duration": 7200,
-		"play_method": "transcode", "video_decision": "transcode", "audio_decision": "direct", "stream_location": "remote", "client_ip": "198.51.100.2"}
+		"play_method": "transcode", "video_decision": "transcode", "audio_decision": "direct", "stream_location": "remote", "client_ip": "198.51.100.2",
+		"poster_url": "/api/v1/images/poster-2.png?sig=abc"}
 	_ = siloSocket.WriteJSON(map[string]any{"type": "event", "channel": "sessions", "event": "session.started", "data": map[string]any{"session_id": "live-1", "seq": 5, "state": "playing", "session": row}})
 	waitFor(t, "silo live play", func() bool {
 		return count(`SELECT COUNT(*) FROM plays WHERE session_key='live-1' AND status='active' AND play_method='transcode' AND location='wan'`) == 1
 	})
+	// Silo's relative, signed poster is cached and served from Siloscope.
+	var poster string
+	_ = s.db.QueryRow(`SELECT COALESCE(poster_url, '') FROM plays WHERE session_key='live-1'`).Scan(&poster)
+	if !strings.HasPrefix(poster, "/api/silo/poster?key=") {
+		t.Fatalf("silo poster_url = %q", poster)
+	}
+	posterResponse := httptest.NewRecorder()
+	app.siloPoster(posterResponse, httptest.NewRequest(http.MethodGet, poster, nil))
+	if posterResponse.Code != http.StatusOK || posterResponse.Header().Get("Content-Type") != "image/png" {
+		t.Fatalf("cached poster = %d %q", posterResponse.Code, posterResponse.Header().Get("Content-Type"))
+	}
+	fake.mu.Lock()
+	fake.siloSessions = []map[string]any{row}
+	fake.mu.Unlock()
+	sessionsResponse := httptest.NewRecorder()
+	app.siloSessionsJSON(sessionsResponse, httptest.NewRequest(http.MethodGet, "/api/sessions", nil))
+	if !strings.Contains(sessionsResponse.Body.String(), `"poster_url":"`+strings.ReplaceAll(poster, "&", "\\u0026")) {
+		t.Fatalf("playing feed poster not rewritten: %s", sessionsResponse.Body.String())
+	}
+	fake.mu.Lock()
+	fake.siloSessions = nil
+	fake.mu.Unlock()
+
 	_ = siloSocket.WriteJSON(map[string]any{"type": "event", "channel": "sessions", "event": "session.stopped", "data": map[string]any{"session_id": "live-1", "seq": 9, "state": "stopped",
 		"history": map[string]any{"session_id": "live-1", "lifecycle_seq": 9, "user_id": "7", "username": "sam", "media_item_id": "movie-2", "media_title": "Live Film", "media_type": "movie",
 			"started_at": "2026-11-08T10:00:00Z", "ended_at": "2026-11-08T10:30:00Z", "completed": false, "duration_seconds": 7200, "watched_seconds": 1800, "played_seconds": 1750,
