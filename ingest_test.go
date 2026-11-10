@@ -35,7 +35,31 @@ func newFakeServers(t *testing.T) (*fakeServers, *httptest.Server, *httptest.Ser
 		page := func(items any) {
 			_ = json.NewEncoder(w).Encode(map[string]any{"items": items, "page": map[string]any{"has_more": false}})
 		}
+		// Like Silo, refuse query parameters an operation does not declare.
+		allowed := map[string][]string{
+			"/api/v2/admin/users": {"limit", "cursor"}, "/api/v2/admin/playback-history": {"limit", "cursor", "ended_after"},
+			"/api/v2/admin/sessions": {"limit", "cursor"}, "/api/v2/admin/catalog/items": {"limit", "cursor", "type"},
+			"/api/v2/events/ws": {"channels"}, "/api/v1/images/poster-2.png": {"sig"},
+		}
+		for key := range r.URL.Query() {
+			ok := false
+			for _, name := range allowed[r.URL.Path] {
+				ok = ok || name == key
+			}
+			if !ok {
+				w.WriteHeader(http.StatusUnprocessableEntity)
+				return
+			}
+		}
 		switch r.URL.Path {
+		case "/api/v2/libraries":
+			page([]map[string]any{{"id": "1", "name": "Movies", "type": "movies", "paths": []string{"/Media/Movies"}, "enabled": true}})
+		case "/api/v2/admin/catalog/items":
+			if r.URL.Query().Get("type") == "movie" {
+				page([]map[string]any{{"versions": []map[string]any{{"file_id": "f1", "file_size": 1000, "library_id": "1"}, {"file_id": "f2", "file_size": 500, "library_id": "1"}}}})
+			} else {
+				page([]map[string]any{})
+			}
 		case "/api/v2/admin/users":
 			page([]map[string]any{{"id": "7", "username": "sam", "email": "sam@example.test"}, {"id": "8", "username": "silo-only"}})
 		case "/api/v2/admin/users/7/identities":
@@ -303,6 +327,12 @@ func TestIngestersRecordPlaysAndLinkAccounts(t *testing.T) {
 	_ = s.db.QueryRow(`SELECT COALESCE(p.display_name, '') FROM accounts a JOIN people p ON p.id = a.person_id WHERE a.source='plex' AND a.external_id='429535384'`).Scan(&joName)
 	if joName != "Jo" {
 		t.Fatalf("plex account 429535384 person name = %q, want Jo", joName)
+	}
+
+	// Library sizes total the catalog's files per library.
+	app.refreshLibraryUsage(context.Background())
+	if app.libraryUsage.lastError != "" || len(app.libraryUsage.libraries) != 1 || app.libraryUsage.libraries[0].Bytes != 1500 || app.libraryUsage.libraries[0].Files != 2 {
+		t.Fatalf("library usage = %+v, error %q", app.libraryUsage.libraries, app.libraryUsage.lastError)
 	}
 
 	// The History API serves all of it, newest first.

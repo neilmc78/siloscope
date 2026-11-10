@@ -59,25 +59,9 @@ func (a *application) refreshLibraryUsage(ctx context.Context) {
 	silo := &siloIngester{app: a}
 	libraries := map[string]*libraryUsage{}
 	order := []string{}
-	err := silo.pages(ctx, "/api/v2/libraries", nil, func(raw json.RawMessage) error {
-		var items []struct {
-			ID      string   `json:"id"`
-			Name    string   `json:"name"`
-			Type    string   `json:"type"`
-			Paths   []string `json:"paths"`
-			Enabled *bool    `json:"enabled"`
-		}
-		if err := json.Unmarshal(raw, &items); err != nil {
-			return err
-		}
-		for _, item := range items {
-			if item.Enabled != nil && !*item.Enabled {
-				continue
-			}
-			libraries[item.ID] = &libraryUsage{ID: item.ID, Name: item.Name, Type: item.Type, Paths: item.Paths}
-			order = append(order, item.ID)
-		}
-		return nil
+	// listLibraries returns every library at once and refuses paging parameters.
+	err := silo.list(ctx, "/api/v2/libraries", func(raw json.RawMessage) error {
+		return readLibraries(raw, libraries, &order)
 	})
 	if err != nil {
 		a.libraryUsageFailed(err)
@@ -144,4 +128,25 @@ func (a *application) libraryUsageJSON(writer http.ResponseWriter, _ *http.Reque
 		payload.Libraries = []libraryUsage{}
 	}
 	_ = json.NewEncoder(writer).Encode(payload)
+}
+
+func readLibraries(raw json.RawMessage, libraries map[string]*libraryUsage, order *[]string) error {
+	var items []struct {
+		ID      string   `json:"id"`
+		Name    string   `json:"name"`
+		Type    string   `json:"type"`
+		Paths   []string `json:"paths"`
+		Enabled *bool    `json:"enabled"`
+	}
+	if err := json.Unmarshal(raw, &items); err != nil {
+		return err
+	}
+	for _, item := range items {
+		if item.Enabled != nil && !*item.Enabled {
+			continue
+		}
+		libraries[item.ID] = &libraryUsage{ID: item.ID, Name: item.Name, Type: item.Type, Paths: item.Paths}
+		*order = append(*order, item.ID)
+	}
+	return nil
 }

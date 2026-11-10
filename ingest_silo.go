@@ -189,6 +189,22 @@ func (ingest *siloIngester) pages(ctx context.Context, path string, query url.Va
 	return errors.New("Silo collection exceeded the page limit")
 }
 
+// list reads a v2 {items, page} collection that is not paged: these
+// operations return everything at once and refuse limit and cursor (422).
+func (ingest *siloIngester) list(ctx context.Context, path string, visit func(json.RawMessage) error) error {
+	body, _, err := ingest.request(ctx, http.MethodGet, path, nil, ingest.app.config.apiKey)
+	if err != nil {
+		return err
+	}
+	var collection struct {
+		Items json.RawMessage `json:"items"`
+	}
+	if err := json.Unmarshal(body, &collection); err != nil {
+		return err
+	}
+	return visit(collection.Items)
+}
+
 func (ingest *siloIngester) run(ctx context.Context) {
 	ingest.repairPosters(ctx)
 	ingest.syncAccounts(ctx)
@@ -249,7 +265,7 @@ func (ingest *siloIngester) syncAccounts(ctx context.Context) {
 		}
 		for _, user := range users {
 			info := accountInfo{Source: "silo", ExternalID: user.ID, Username: user.Username, DisplayName: user.Username, Email: user.Email}
-			_ = ingest.pages(ctx, "/api/v2/admin/users/"+url.PathEscape(user.ID)+"/identities", nil, func(raw json.RawMessage) error {
+			identityErr := ingest.list(ctx, "/api/v2/admin/users/"+url.PathEscape(user.ID)+"/identities", func(raw json.RawMessage) error {
 				var identities []struct {
 					Issuer          string `json:"issuer"`
 					ProviderID      string `json:"provider_id"`
@@ -265,6 +281,9 @@ func (ingest *siloIngester) syncAccounts(ctx context.Context) {
 				}
 				return nil
 			})
+			if identityErr != nil {
+				ingest.noteError(fmt.Errorf("sign-in identities for Silo user %s: %w", user.ID, identityErr))
+			}
 			var seen time.Time
 			if user.LastActiveAt != nil {
 				seen, _ = time.Parse(time.RFC3339, *user.LastActiveAt)
