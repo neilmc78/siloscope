@@ -20,7 +20,7 @@ const MonitorStats = (() => {
   const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
   const zone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 
-  const state = { view: "overview", range: "7d", source: "all", person: null, data: null, users: null, sort: "plays", query: "", loading: false, error: "" };
+  const state = { people: [], notice: "", view: "overview", range: "7d", source: "all", person: null, data: null, users: null, sort: "plays", query: "", loading: false, error: "" };
   let request = 0;
 
   function make(tag, className, text) {
@@ -430,6 +430,7 @@ const MonitorStats = (() => {
 
   function openPerson(id) {
     state.person = id;
+    state.notice = "";
     load();
     document.querySelector(".page-shell")?.scrollTo(0, 0);
   }
@@ -513,8 +514,35 @@ const MonitorStats = (() => {
     back.title = "Back to users";
     back.append(make("span", "ui-icon icon-back"));
     back.addEventListener("click", () => { state.person = null; state.view = "users"; load(); });
-    header.append(back, make("span", "stats-avatar large", (person.name || "?").charAt(0).toUpperCase()), make("h3", "stats-person-name", person.name));
+    const rename = make("button", "stats-text-button", "Rename");
+    rename.type = "button";
+    rename.addEventListener("click", () => {
+      const name = window.prompt("Name shown for this person", person.name);
+      if (name && name.trim() && name.trim() !== person.name) changePeople({ action: "rename", person_id: person.id, display_name: name.trim() }, person.id);
+    });
+    header.append(back, make("span", "stats-avatar large", (person.name || "?").charAt(0).toUpperCase()), make("h3", "stats-person-name", person.name), rename);
     return header;
+  }
+
+  // changePeople links, unlinks or renames, then shows the person who now
+  // holds the account in question (linking can move to the other person).
+  async function changePeople(body, followAccountOrPerson, followAccount = false) {
+    state.notice = "";
+    try {
+      const response = await fetch("/api/people", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(10000) });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload?.error || "The change could not be saved");
+      state.people = payload;
+      const target = followAccount
+        ? payload.find(person => person.accounts.some(account => account.id === followAccountOrPerson))
+        : payload.find(person => person.id === followAccountOrPerson);
+      state.notice = { link: "Accounts linked", unlink: "Account unlinked", rename: "Name saved" }[body.action];
+      if (target) state.person = target.id;
+      load();
+    } catch (error) {
+      state.notice = error.message || "The change could not be saved";
+      render();
+    }
   }
 
   function renderPerson(data) {
@@ -527,10 +555,50 @@ const MonitorStats = (() => {
       copy.append(make("strong", "", `${account.source === "silo" ? "Silo" : "Plex"} · ${account.display_name || account.username || account.external_id}`));
       const details = [account.email, account.plex_identity ? "Plex identity" : "", account.link_method === "manual" ? "Linked by hand" : ""].filter(Boolean).join(" · ");
       if (details) copy.append(make("span", "stats-muted", details));
-      row.append(copy, make("span", "stats-muted", `Last active ${relative(account.last_seen)}`));
+      const side = make("span", "stats-account-side");
+      side.append(make("span", "stats-muted", `Last active ${relative(account.last_seen)}`));
+      if (person.accounts.length > 1) {
+        const unlink = make("button", "stats-text-button", "Unlink");
+        unlink.type = "button";
+        unlink.setAttribute("aria-label", `Unlink ${account.source === "silo" ? "Silo" : "Plex"} account ${account.display_name || account.username || account.external_id}`);
+        // The rest of this person stays on this page; the unlinked account becomes its own person.
+        const remaining = person.accounts.find(other => other.id !== account.id);
+        unlink.addEventListener("click", () => changePeople({ action: "unlink", account_id: account.id }, remaining.id, true));
+        side.append(unlink);
+      }
+      row.append(copy, side);
       accountList.append(row);
     }
     accounts.append(accountList);
+    const candidates = state.people
+      .filter(other => other.id !== person.id)
+      .flatMap(other => other.accounts.map(account => ({ person: other, account })))
+      .sort((a, b) => a.person.display_name.localeCompare(b.person.display_name));
+    if (candidates.length) {
+      const form = make("div", "stats-link-form");
+      const select = document.createElement("select");
+      select.className = "stats-sort";
+      select.setAttribute("aria-label", "Account to link to this person");
+      const placeholder = make("option", "", "Link another account…");
+      placeholder.value = "";
+      select.append(placeholder);
+      for (const { person: other, account } of candidates) {
+        const option = make("option", "", `${other.display_name} — ${account.source === "silo" ? "Silo" : "Plex"} · ${account.username || account.display_name || account.external_id}${account.email ? ` · ${account.email}` : ""}`);
+        option.value = String(account.id);
+        select.append(option);
+      }
+      const link = make("button", "stats-filter", "Link");
+      link.type = "button";
+      link.disabled = true;
+      select.addEventListener("change", () => { link.disabled = !select.value; });
+      link.addEventListener("click", () => {
+        const chosen = Number(select.value);
+        if (chosen) changePeople({ action: "link", account_ids: [person.accounts[0].id, chosen] }, person.accounts[0].id, true);
+      });
+      form.append(select, link);
+      accounts.append(form);
+    }
+    if (state.notice) accounts.append(make("p", "stats-muted stats-notice", state.notice));
     const devices = card("Devices");
     if (data.devices?.length) {
       const list = make("ul", "stats-accounts");
@@ -596,11 +664,15 @@ const MonitorStats = (() => {
         state.users = users;
       } else {
         if (state.person) params.set("person", state.person);
-        const response = await fetch(`/api/stats?${params}`, { cache: "no-store", signal: AbortSignal.timeout(20000) });
+        const [response, people] = await Promise.all([
+          fetch(`/api/stats?${params}`, { cache: "no-store", signal: AbortSignal.timeout(20000) }),
+          state.person ? fetch("/api/people", { cache: "no-store", signal: AbortSignal.timeout(20000) }).then(reply => reply.ok ? reply.json() : []) : Promise.resolve(state.people),
+        ]);
         if (!response.ok) throw new Error();
         const data = await response.json();
         if (id !== request) return;
         state.data = data;
+        state.people = Array.isArray(people) ? people : [];
       }
     } catch {
       if (id !== request) return;
