@@ -129,15 +129,17 @@ func (ingest *siloIngester) request(ctx context.Context, method, path string, qu
 	upstream := *ingest.app.config.siloURL
 	upstream.Path = strings.TrimRight(upstream.Path, "/") + path
 	upstream.RawQuery = query.Encode()
-	request, err := http.NewRequestWithContext(ctx, method, upstream.String(), nil)
-	if err != nil {
-		return nil, 0, err
-	}
-	request.Header.Set("Accept", "application/json")
-	request.Header.Set("Authorization", "Bearer "+key)
 	client := *ingest.app.client
 	client.Timeout = 30 * time.Second
-	response, err := client.Do(request)
+	response, err := ingest.app.doSilo(ctx, &client, func() (*http.Request, error) {
+		request, err := http.NewRequestWithContext(ctx, method, upstream.String(), nil)
+		if err != nil {
+			return nil, err
+		}
+		request.Header.Set("Accept", "application/json")
+		request.Header.Set("Authorization", "Bearer "+key)
+		return request, nil
+	})
 	if err != nil {
 		return nil, 0, err
 	}

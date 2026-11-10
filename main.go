@@ -99,6 +99,7 @@ type application struct {
 	store         *store
 	libraryUsage  libraryUsageCache
 	posters       *posterCache
+	siloPacer     *requestPacer
 	network       *hostNetworkSampler
 	processes     *processSampler
 	notifications *notificationService
@@ -260,6 +261,7 @@ func newApplication(cfg config) *application {
 			},
 		},
 		cache:     proxyCache{entries: make(map[string]cacheEntry)},
+		siloPacer: newRequestPacer(siloRequestsPerSecond, siloBurst),
 		processes: &processSampler{procDir: cfg.hostProcDir},
 	}
 	if cfg.hostNetworkStatsDir != "" || cfg.hostProcDir != "" {
@@ -618,18 +620,19 @@ func (a *application) fetchCollection(ctx context.Context, upstreamURL url.URL) 
 }
 
 func (a *application) fetchResponse(ctx context.Context, upstreamURL url.URL) ([]byte, string, error) {
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, upstreamURL.String(), nil)
-	if err != nil {
-		return nil, "", err
-	}
-	request.Header.Set("Accept", "application/json")
-	request.Header.Set("Authorization", "Bearer "+a.config.apiKey)
-
 	client := *a.client
 	if upstreamURL.Path == strings.TrimRight(a.config.siloURL.Path, "/")+"/api/v2/admin/system/build" {
 		client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	}
-	response, err := client.Do(request)
+	response, err := a.doSilo(ctx, &client, func() (*http.Request, error) {
+		request, err := http.NewRequestWithContext(ctx, http.MethodGet, upstreamURL.String(), nil)
+		if err != nil {
+			return nil, err
+		}
+		request.Header.Set("Accept", "application/json")
+		request.Header.Set("Authorization", "Bearer "+a.config.apiKey)
+		return request, nil
+	})
 	if err != nil {
 		return nil, "", err
 	}
