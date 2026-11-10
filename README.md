@@ -1,8 +1,8 @@
 # Siloscope
 
-A monitoring and statistics dashboard for **Silo** and **Plex** in one place: live streams, server health, full playback history and Tautulli-style stats per user, with Silo and Plex accounts linked to the same person. Built mobile-first, it runs comfortably on a phone.
+A monitoring and statistics dashboard for **Silo** and **Plex** in one place: live streams, server health, full playback history and Tautulli-style stats per user, with Silo and Plex accounts linked to the same person. Access is behind your Silo administrator sign-in, two-step included. Built mobile-first, it runs comfortably on a phone.
 
-> Siloscope started as a fork of [safetyp1/siloscope](https://github.com/safetyp1/siloscope) and has since grown a history database, a stats section, account linking and themes. Thanks to the original author for the foundation.
+> Siloscope started as a fork of [safetyp1/siloscope](https://github.com/safetyp1/siloscope) and has since grown a history database, a stats section, account linking, Silo sign-in and themes. Thanks to the original author for the foundation.
 
 <p>
   <img src="docs/images/playing.png" alt="Now Playing with Silo and Plex streams side by side" width="230">
@@ -21,7 +21,7 @@ A monitoring and statistics dashboard for **Silo** and **Plex** in one place: li
 | **Linked accounts** | Silo and Plex accounts of the same person are matched automatically (by Plex sign-in or email) and can be linked, unlinked or renamed by hand, so one person is one row in the stats. |
 | **Server health** | CPU, memory, bandwidth and top processes on the Silo host; disk free space with the size of each Silo library; Silo remote stream nodes. |
 | **Themes** | Rose, Midnight, Light, High contrast, Console, Matrix and Synthwave, any accent colour, and per-device layout: reorder or hide tabs and panels. |
-| **Sign-in** | Sign in with your Silo administrator account, including Silo's two-step sign-in. Other Silo accounts are refused. |
+| **Sign-in** | Sign in with your Silo administrator account, including Silo's two-step sign-in. Other Silo accounts are refused, and sessions end if an account loses admin. |
 | **Optional extras** | Push alerts, InfiniDysk throughput, Sonarr/Radarr file replacement and Silo transcoder settings. |
 
 ## Screenshots
@@ -40,9 +40,9 @@ All screenshots use a demo server with made-up users and titles.
 | --- | --- | --- |
 | <img src="docs/images/stats-top.png" alt="Most watched and most popular shows, most active users" width="250"> | <img src="docs/images/users.png" alt="Users list with plays and watch time" width="250"> | <img src="docs/images/user.png" alt="Person page with linked Silo and Plex accounts" width="250"> |
 
-| Stream nodes | Appearance |
-| --- | --- |
-| <img src="docs/images/nodes.png" alt="Silo remote stream nodes" width="250"> | <img src="docs/images/appearance.png" alt="Appearance settings with theme choices" width="250"> |
+| Stream nodes | Appearance | Sign-in |
+| --- | --- | --- |
+| <img src="docs/images/nodes.png" alt="Silo remote stream nodes" width="250"> | <img src="docs/images/appearance.png" alt="Appearance settings with theme choices" width="250"> | <img src="docs/images/login.png" alt="Sign-in page asking for a Silo administrator's username and password" width="250"> |
 
 **Themes**
 
@@ -214,6 +214,10 @@ Edit `/etc/siloscope/siloscope.env`, then `systemctl daemon-reload && systemctl 
 
 ## Sign-in
 
+| Password | Two-step sign-in |
+| --- | --- |
+| <img src="docs/images/login.png" alt="Sign-in page with username and password" width="250"> | <img src="docs/images/login-2fa.png" alt="Two-step sign-in asking for an authenticator code, with a recovery-code option" width="250"> |
+
 Siloscope asks you to sign in with a **Silo administrator** account. It sends the username and password to Silo's own sign-in, and for accounts with two-step sign-in, the authenticator or recovery code as well. Any account that isn't an administrator is refused. Siloscope then signs straight back out of Silo, keeps no password and no Silo session, and gives the browser its own session cookie for 30 days.
 
 - Every 15 minutes Siloscope checks with Silo that each signed-in account still exists, is enabled and is still an administrator, and signs out any that isn't.
@@ -221,6 +225,8 @@ Siloscope asks you to sign in with a **Silo administrator** account. It sends th
 - Requests that change anything are refused when they come from another website.
 - **Settings** shows who is signed in, with a **Sign out** button.
 - Plex sign-in and passkeys aren't supported here: sign in with the account's Silo password. An account that uses passkeys can add an authenticator app in Silo.
+
+**Two-step sign-in and break-glass accounts.** Two-step sign-in applies to any administrator that signs in with a Silo password and isn't break-glass. Silo never asks a break-glass account for a second step, so it stays a password-only way back in, and the server Owner is break-glass by default. To protect Siloscope with two-step sign-in, keep the Owner as the emergency account and sign in to Siloscope with a second administrator that has a password and an authenticator app; only the Owner can make an account an administrator. An administrator that signs in to Silo with Plex has no Silo password and can't sign in to Siloscope.
 
 If an authenticating reverse proxy already guards Siloscope, set `AUTH_MODE=none` to turn sign-in off.
 
