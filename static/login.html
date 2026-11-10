@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#171113">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Siloscope">
+    <title>Sign in · Siloscope</title>
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
+    <link rel="manifest" href="/site.webmanifest">
+    <link rel="stylesheet" href="/styles.css?v=auth-20261110-r1">
+    <script src="/preferences.js?v=auth-20261110-r1" defer></script>
+    <script src="/login.js?v=auth-20261110-r1" defer></script>
+  </head>
+  <body class="auth-body">
+    <main class="auth-shell">
+      <h1 class="visually-hidden">Sign in to Siloscope</h1>
+      <section class="auth-card" aria-labelledby="auth-title">
+        <img class="auth-logo" src="/icon-192.png" alt="" width="56" height="56">
+        <h2 id="auth-title" class="auth-title">Siloscope</h2>
+        <p class="auth-subtitle">Sign in with your Silo administrator account.</p>
+
+        <form id="login-form" class="auth-form" novalidate>
+          <label class="auth-field">
+            <span>Username</span>
+            <input id="login-username" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus>
+          </label>
+          <label class="auth-field">
+            <span>Password</span>
+            <span class="auth-password">
+              <input id="login-password" name="password" type="password" autocomplete="current-password" required>
+              <button id="login-reveal" class="auth-reveal" type="button" aria-label="Show password" aria-pressed="false">Show</button>
+            </span>
+          </label>
+          <p id="login-error" class="auth-error" role="alert" hidden></p>
+          <button id="login-submit" class="auth-submit" type="submit">Sign in</button>
+        </form>
+
+        <form id="second-form" class="auth-form" novalidate hidden>
+          <div>
+            <h3 class="auth-step-title">Two-step sign-in</h3>
+            <p id="second-hint" class="auth-subtitle">Enter the six-digit code from your authenticator app.</p>
+          </div>
+          <label class="auth-field">
+            <span id="second-label">Authenticator code</span>
+            <input id="second-code" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="12" required>
+          </label>
+          <p id="second-error" class="auth-error" role="alert" hidden></p>
+          <button id="second-submit" class="auth-submit" type="submit">Verify</button>
+          <div class="auth-links">
+            <button id="second-switch" class="auth-link" type="button" hidden>Use a recovery code instead</button>
+            <button id="second-restart" class="auth-link" type="button">Start again</button>
+          </div>
+        </form>
+
+        <p class="auth-footnote">Only Silo administrators can sign in. Siloscope checks your password with Silo and doesn't store it.</p>
+      </section>
+    </main>
+  </body>
+</html>

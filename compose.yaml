@@ -7,6 +7,7 @@ services:
       SILO_URL: ${SILO_URL:?Set SILO_URL in .env}
       SILO_API_KEY: ${SILO_API_KEY:?Set SILO_API_KEY in .env}
       SILO_MONITOR_API_KEY: ${SILO_MONITOR_API_KEY:-}
+      AUTH_MODE: ${AUTH_MODE:-silo}
       PLEX_URL: ${PLEX_URL:-}
       PLEX_TOKEN: ${PLEX_TOKEN:-}
       IFD_URL: ${IFD_URL:-}

@@ -1,5 +1,19 @@
 "use strict";
 
+// A session that ends (expired, signed out elsewhere, or no longer an admin)
+// makes every API call answer 401; send the viewer back to the sign-in page.
+if (typeof window !== "undefined" && window.fetch && location.pathname !== "/login") {
+  const nativeFetch = window.fetch.bind(window);
+  window.fetch = async (...args) => {
+    const response = await nativeFetch(...args);
+    const target = String(args[0]?.url ?? args[0]);
+    if (response.status === 401 && target.startsWith("/api/") && !target.startsWith("/api/auth/")) {
+      location.assign(`/login?next=${encodeURIComponent(location.pathname + location.search)}`);
+    }
+    return response;
+  };
+}
+
 const MonitorPreferences = (() => {
   const storageKey = "silo-monitor.ui.v1";
   const systemOrder = ["disk", "cpu", "network", "ifd", "memory"];

@@ -100,6 +100,7 @@ type application struct {
 	libraryUsage  libraryUsageCache
 	posters       *posterCache
 	siloPacer     *requestPacer
+	auth          *authService
 	network       *hostNetworkSampler
 	processes     *processSampler
 	notifications *notificationService
@@ -165,6 +166,8 @@ func main() {
 	if app.ifd != nil {
 		go app.ifd.run(ctx)
 	}
+	app.auth.load(ctx)
+	go app.auth.recheck(ctx)
 	go app.runActivity(ctx)
 	go app.runLibraryUsage(ctx)
 	if app.store != nil {
@@ -270,11 +273,24 @@ func newApplication(cfg config) *application {
 	if cfg.ifdURL != nil {
 		app.ifd = &ifdMonitor{url: cfg.ifdURL, key: cfg.ifdAPIKey, client: &http.Client{Timeout: defaultTimeout, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}}
 	}
+	app.auth = newAuthService(app)
 	return app
 }
 
 func (a *application) routes() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /login", func(w http.ResponseWriter, r *http.Request) {
+		if a.auth.enabled && a.auth.session(r) != nil {
+			http.Redirect(w, r, "/", http.StatusSeeOther)
+			return
+		}
+		w.Header().Set("Cache-Control", "no-store")
+		http.ServeFileFS(w, r, staticRoot(), "login.html")
+	})
+	mux.HandleFunc("POST /api/auth/login", a.auth.loginJSON)
+	mux.HandleFunc("POST /api/auth/second-factor", a.auth.secondFactorJSON)
+	mux.HandleFunc("POST /api/auth/logout", a.auth.logoutJSON)
+	mux.HandleFunc("GET /api/auth/status", a.auth.statusJSON)
 	mux.HandleFunc("GET /api/ifd", a.ifdJSON)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
@@ -317,7 +333,7 @@ func (a *application) routes() http.Handler {
 	}
 	mux.Handle("/", http.FileServer(http.FS(content)))
 
-	return securityHeaders(mux)
+	return securityHeaders(a.auth.require(mux))
 }
 
 // sampleStreams records per-minute concurrency and bandwidth from the play store.
@@ -681,4 +697,13 @@ func writeJSONError(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": message})
+}
+
+// staticRoot is the embedded static directory.
+func staticRoot() fs.FS {
+	content, err := fs.Sub(staticFiles, "static")
+	if err != nil {
+		panic(err)
+	}
+	return content
 }

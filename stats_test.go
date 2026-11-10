@@ -82,7 +82,7 @@ func TestAutoLinkMatchesEmailAcrossServers(t *testing.T) {
 		_ = s.db.QueryRow(`SELECT person_id FROM accounts WHERE id = ?`, id).Scan(&value)
 		return
 	}
-	siloOwner := add("silo", "1", "Owner@Example.com", "")          // password sign-in, no Plex identity
+	siloOwner := add("silo", "1", "Owner@Example.com", "")           // password sign-in, no Plex identity
 	plexOwner := add("plex", "1", "owner@example.com", "uuid-owner") // same email, different case
 	siloClash := add("silo", "2", "shared@example.com", "uuid-a")    // same email, different plex.tv IDs
 	plexClash := add("plex", "2", "shared@example.com", "uuid-b")
