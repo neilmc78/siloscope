@@ -77,26 +77,40 @@ func (s *store) ensureAccount(ctx context.Context, info accountInfo, seen time.T
 func (s *store) autoLink(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	rows, err := s.db.QueryContext(ctx, `SELECT plex_uuid, GROUP_CONCAT(id) FROM accounts
-		WHERE plex_uuid IS NOT NULL AND link_method = 'auto'
-		GROUP BY plex_uuid HAVING COUNT(DISTINCT person_id) > 1`)
-	if err != nil {
-		return err
+	// Strongest first: the plex.tv account ID a Silo account carries from the
+	// Plex sign-in plugin. Then the same email on a Silo and a Plex account,
+	// unless they carry different plex.tv IDs. Silo stores the email the
+	// person typed, so a manual unlink can undo a wrong match, and accounts an
+	// administrator linked or unlinked by hand are never touched.
+	rules := []string{
+		`SELECT GROUP_CONCAT(id) FROM accounts
+			WHERE plex_uuid IS NOT NULL AND link_method = 'auto'
+			GROUP BY plex_uuid HAVING COUNT(DISTINCT person_id) > 1`,
+		`SELECT GROUP_CONCAT(id) FROM accounts
+			WHERE email IS NOT NULL AND TRIM(email) <> '' AND email LIKE '%@%' AND LOWER(email) NOT LIKE '%.invalid'
+			  AND link_method = 'auto'
+			GROUP BY LOWER(TRIM(email))
+			HAVING COUNT(DISTINCT person_id) > 1 AND COUNT(DISTINCT source) > 1 AND COUNT(DISTINCT plex_uuid) <= 1`,
 	}
-	type group struct{ ids []string }
-	var groups []group
-	for rows.Next() {
-		var uuid, ids string
-		if err := rows.Scan(&uuid, &ids); err != nil {
-			rows.Close()
+	for _, rule := range rules {
+		rows, err := s.db.QueryContext(ctx, rule)
+		if err != nil {
 			return err
 		}
-		groups = append(groups, group{strings.Split(ids, ",")})
-	}
-	rows.Close()
-	for _, g := range groups {
-		if err := s.mergeAccountsLocked(ctx, g.ids, "auto"); err != nil {
-			return err
+		var groups [][]string
+		for rows.Next() {
+			var ids string
+			if err := rows.Scan(&ids); err != nil {
+				rows.Close()
+				return err
+			}
+			groups = append(groups, strings.Split(ids, ","))
+		}
+		rows.Close()
+		for _, ids := range groups {
+			if err := s.mergeAccountsLocked(ctx, ids, "auto"); err != nil {
+				return err
+			}
 		}
 	}
 	return s.refreshPersonNamesLocked(ctx)

@@ -18,7 +18,7 @@ A monitoring and statistics dashboard for **Silo** and **Plex** in one place: li
 | **History** | Every play from both servers, kept indefinitely in SQLite: measured watch and pause time, progress, client, platform, quality, LAN/WAN and IP. Imports Silo's full history and Plex's watch history on first start. |
 | **Stats** | Plays and watch time over time, concurrent streams and the peak, plays by weekday and hour, stream quality, top platforms, most watched and most popular movies and shows, most active users, for a week, month, year or all time. |
 | **Users** | Everyone who watches, on either server, with a page per person: their accounts, charts, top titles, devices and IP addresses. |
-| **Linked accounts** | People who sign in to Silo with Plex are matched to their Plex account automatically, so one person is one row in the stats. |
+| **Linked accounts** | Silo and Plex accounts of the same person are matched automatically (by Plex sign-in or email) and can be linked, unlinked or renamed by hand, so one person is one row in the stats. |
 | **Server health** | CPU, memory, bandwidth and top processes on the Silo host; disk free space with the size of each Silo library; Silo remote stream nodes. |
 | **Themes** | Rose, Midnight, Light, High contrast, Console, Matrix and Synthwave, any accent colour, and per-device layout: reorder or hide tabs and panels. |
 | **Optional extras** | Push alerts, InfiniDysk throughput, Sonarr/Radarr file replacement and Silo transcoder settings. |
@@ -276,9 +276,14 @@ Stats cover a week, month, year or all time, for Silo, Plex or both. A resumed p
 
 ### Linked accounts
 
-Every Silo and Plex account belongs to a person. A Silo account signed in through the [Plex sign-in plugin](https://github.com/neilmc78/silo-plugin-auth-plex) carries its plex.tv account ID, and Siloscope matches it to the same Plex account automatically. Plex account names come from the Plex server; plex.tv supplies the IDs, so allow outbound HTTPS to plex.tv. People who use only one server stay on their own.
+Every Silo and Plex account belongs to a person. Siloscope links a Silo account and a Plex account to the same person automatically when either:
 
-`GET /api/people` lists people and their accounts. `POST /api/people` links accounts by hand (`{"action":"link","account_ids":[1,2]}`), unlinks one (`{"action":"unlink","account_id":1}`) or renames a person (`{"action":"rename","person_id":1,"display_name":"Sam"}`). Automatic matching never undoes a manual change.
+1. the Silo account was signed in through the [Plex sign-in plugin](https://github.com/neilmc78/silo-plugin-auth-plex) and carries the same plex.tv account ID, or
+2. both accounts have the same email address, ignoring case, unless they carry different plex.tv IDs.
+
+Plex account names come from the Plex server; plex.tv supplies the IDs and emails, so allow outbound HTTPS to plex.tv. Silo doesn't verify the emails people enter, so check new matches on the Users page.
+
+To fix a match by hand, open a person in **Stats → Users**. **Link another account** moves any other account to this person, **Unlink** splits an account off into its own person, and **Rename** changes the name shown. Automatic matching never undoes a manual change. The same actions are available through `POST /api/people` (`{"action":"link","account_ids":[1,2]}`, `{"action":"unlink","account_id":1}`, `{"action":"rename","person_id":1,"display_name":"Sam"}`), and `GET /api/people` lists people and their accounts.
 
 ### Disk usage and library sizes
 
