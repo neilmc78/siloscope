@@ -200,6 +200,14 @@ CREATE TABLE ingest_state (
 `,
 	// 2: people names follow their accounts until an administrator renames them.
 	`ALTER TABLE people ADD COLUMN name_manual INTEGER NOT NULL DEFAULT 0;`,
+	// 3: Siloscope sign-in sessions; only a hash of each session token is kept.
+	`CREATE TABLE auth_sessions (
+		token_hash   TEXT PRIMARY KEY,
+		silo_user_id TEXT NOT NULL,
+		username     TEXT NOT NULL,
+		expires      INTEGER NOT NULL,
+		last_seen    INTEGER NOT NULL
+	);`,
 }
 
 // playColumns lists every plays column an ingester may set. upsertPlay only

@@ -21,6 +21,7 @@ A monitoring and statistics dashboard for **Silo** and **Plex** in one place: li
 | **Linked accounts** | Silo and Plex accounts of the same person are matched automatically (by Plex sign-in or email) and can be linked, unlinked or renamed by hand, so one person is one row in the stats. |
 | **Server health** | CPU, memory, bandwidth and top processes on the Silo host; disk free space with the size of each Silo library; Silo remote stream nodes. |
 | **Themes** | Rose, Midnight, Light, High contrast, Console, Matrix and Synthwave, any accent colour, and per-device layout: reorder or hide tabs and panels. |
+| **Sign-in** | Sign in with your Silo administrator account, including Silo's two-step sign-in. Other Silo accounts are refused. |
 | **Optional extras** | Push alerts, InfiniDysk throughput, Sonarr/Radarr file replacement and Silo transcoder settings. |
 
 ## Screenshots
@@ -64,7 +65,7 @@ Logos identify compatible services; no affiliation or endorsement is implied. Se
 - Optional: a Plex server-owner token, and outbound HTTPS to plex.tv for account linking.
 - Docker on AMD64 or ARM64, or any Linux machine for the release binary.
 
-**Siloscope has no login.** Anyone who can reach it can stop streams, change Silo settings and restart Silo, and delete media files when replacements are enabled. Keep it on a private network or tailnet, or behind an authenticated reverse proxy. Never port-forward it.
+**Sign-in uses your Silo administrator account** (see [Sign-in](#sign-in)). Anyone signed in can stop streams, change Silo settings, restart Silo, and delete media files when replacements are enabled. Serve it over HTTPS if it is reachable from outside your network.
 
 ## Install
 
@@ -134,6 +135,7 @@ services:
          SILO_URL: ${SILO_URL:?Set SILO_URL}
          SILO_API_KEY: ${SILO_API_KEY:?Set SILO_API_KEY}
          SILO_MONITOR_API_KEY: ${SILO_MONITOR_API_KEY:-}
+         AUTH_MODE: ${AUTH_MODE:-silo}
          PLEX_URL: ${PLEX_URL:-}
          PLEX_TOKEN: ${PLEX_TOKEN:-}
          IFD_URL: ${IFD_URL:-}
@@ -210,6 +212,18 @@ wget -O /etc/siloscope/siloscope.env "$BASE/siloscope.env.example" && chmod 600 
 
 Edit `/etc/siloscope/siloscope.env`, then `systemctl daemon-reload && systemctl enable --now siloscope`. Data is kept in `/var/lib/siloscope`. On a different machine from Silo, CPU, memory, disk and bandwidth come from Silo's own statistics and the top-processes panel is unavailable.
 
+## Sign-in
+
+Siloscope asks you to sign in with a **Silo administrator** account. It sends the username and password to Silo's own sign-in, and for accounts with two-step sign-in, the authenticator or recovery code as well. Any account that isn't an administrator is refused. Siloscope then signs straight back out of Silo, keeps no password and no Silo session, and gives the browser its own session cookie for 30 days.
+
+- Every 15 minutes Siloscope checks with Silo that each signed-in account still exists, is enabled and is still an administrator, and signs out any that isn't.
+- Sign-in attempts are limited to 10 per 10 minutes per address, on top of Silo's own limits.
+- Requests that change anything are refused when they come from another website.
+- **Settings** shows who is signed in, with a **Sign out** button.
+- Plex sign-in and passkeys aren't supported here: sign in with the account's Silo password. An account that uses passkeys can add an authenticator app in Silo.
+
+If an authenticating reverse proxy already guards Siloscope, set `AUTH_MODE=none` to turn sign-in off.
+
 ## Silo API keys
 
 Siloscope uses two keys:
@@ -245,6 +259,7 @@ Without the monitoring key, live Silo plays are picked up by a 15-second poll in
 | `RADARR_URL` / `RADARR_API_KEY` | unset | Movie library integration; configure together, usually `http://radarr:7878` |
 | `ARR_REPLACEMENTS_ENABLED` | `false` | Explicit opt-in to destructive Library actions; requires administrator-only proxy access |
 | `REPLACEMENT_DATA_DIR` | `/data/replacements` in Docker/Compose | Persistent replacement records; required when replacements are enabled |
+| `AUTH_MODE` | `silo` | `silo` requires signing in with a Silo administrator account; `none` turns sign-in off for use behind an authenticating proxy |
 | `LISTEN_ADDR` | `:8080` | Address used by the Go server |
 | `MONITOR_BIND` | `127.0.0.1` | Host address published by Compose |
 | `MONITOR_PORT` | `8091` | Host port published by Compose |
