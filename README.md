@@ -1,82 +1,123 @@
 # Siloscope
 
-A mobile-friendly dashboard for monitoring Silo and InfiniDysk, viewing Silo and Plex playback, and managing media replacements with Sonarr and Radarr.
+A monitoring and statistics dashboard for **Silo** and **Plex** in one place: live streams, server health, full playback history and Tautulli-style stats per user, with Silo and Plex accounts linked to the same person. Built mobile-first, it runs comfortably on a phone.
 
-## What you can do
+> Siloscope started as a fork of [safetyp1/siloscope](https://github.com/safetyp1/siloscope) and has since grown a history database, a stats section, account linking and themes. Thanks to the original author for the foundation.
 
-| When you need to... | Siloscope provides... |
+<p>
+  <img src="docs/images/playing.png" alt="Now Playing with Silo and Plex streams side by side" width="230">
+  <img src="docs/images/stats.png" alt="Stats overview with totals and plays over time" width="230">
+  <img src="docs/images/user.png" alt="A person's stats page with their Silo and Plex accounts" width="230">
+</p>
+
+## Features
+
+| | |
 | --- | --- |
-| Spot server pressure before it affects playback | CPU, memory, bandwidth, disk usage, free space, and top-process views |
-| Monitor Usenet fetching and streaming | InfiniDysk fetched/served throughput, connections in use, and active-file activity |
-| See who is watching and troubleshoot a stream | Combined Silo/Plex playback, progress, client details, quality, bitrate, and playback method |
-| Review recent viewing activity | Playback history with Silo/Plex filters, users, durations, and timestamps |
-| Check playback infrastructure | Node health, resource usage, routed streams, and jobs |
-| Find a problematic movie or episode | Sonarr/Radarr title search, exact episode search, and season browsing |
-| Replace an unwanted media file | File preview, release blocklisting, replacement search, and operation status |
-| Know when something needs attention | Push alerts for CPU, disk usage, playback, transcoding, outages, and recovery |
-| Adjust playback behavior | Silo transcoder settings, hardware acceleration, HDR tone mapping, and restart controls |
-| Tailor the dashboard to each device | Reorder tabs, choose visible details, and adjust charts |
+| **Now Playing** | Silo and Plex streams together: poster, user, client, quality, direct play or transcode (including hardware), bitrate and progress. Terminate one or several streams. |
+| **History** | Every play from both servers, kept indefinitely in SQLite: measured watch and pause time, progress, client, platform, quality, LAN/WAN and IP. Imports Silo's full history and Plex's watch history on first start. |
+| **Stats** | Plays and watch time over time, concurrent streams and the peak, plays by weekday and hour, stream quality, top platforms, most watched and most popular movies and shows, most active users, for a week, month, year or all time. |
+| **Users** | Everyone who watches, on either server, with a page per person: their accounts, charts, top titles, devices and IP addresses. |
+| **Linked accounts** | People who sign in to Silo with Plex are matched to their Plex account automatically, so one person is one row in the stats. |
+| **Server health** | CPU, memory, bandwidth and top processes on the Silo host; disk free space with the size of each Silo library; Silo remote stream nodes. |
+| **Themes** | Rose, Midnight, Light, High contrast, Console, Matrix and Synthwave, any accent colour, and per-device layout: reorder or hide tabs and panels. |
+| **Optional extras** | Push alerts, InfiniDysk throughput, Sonarr/Radarr file replacement and Silo transcoder settings. |
+
+## Screenshots
+
+All screenshots use a demo server with made-up users and titles.
+
+| System | Bandwidth and memory | Now Playing |
+| --- | --- | --- |
+| <img src="docs/images/system.png" alt="System tab: disk usage with per-library sizes and CPU" width="250"> | <img src="docs/images/system-network.png" alt="Bandwidth and memory charts" width="250"> | <img src="docs/images/playing.png" alt="Now Playing" width="250"> |
+
+| History | Stats | Charts |
+| --- | --- | --- |
+| <img src="docs/images/history.png" alt="Playback history across Silo and Plex" width="250"> | <img src="docs/images/stats.png" alt="Stats overview" width="250"> | <img src="docs/images/stats-charts.png" alt="Concurrent streams, plays by weekday and peak hours" width="250"> |
+
+| Top titles | Users | A person |
+| --- | --- | --- |
+| <img src="docs/images/stats-top.png" alt="Most watched and most popular shows, most active users" width="250"> | <img src="docs/images/users.png" alt="Users list with plays and watch time" width="250"> | <img src="docs/images/user.png" alt="Person page with linked Silo and Plex accounts" width="250"> |
+
+| Stream nodes | Appearance |
+| --- | --- |
+| <img src="docs/images/nodes.png" alt="Silo remote stream nodes" width="250"> | <img src="docs/images/appearance.png" alt="Appearance settings with theme choices" width="250"> |
+
+**Themes**
+
+<img src="docs/images/themes.png" alt="The Stats tab in each theme: Rose, Midnight, Light, High contrast, Console, Matrix and Synthwave">
 
 ## Compatible with
 
 | Silo | Plex |
 | --- | --- |
 | <a href="https://github.com/Silo-Server/silo-server"><img src="docs/images/silo-logo.png" alt="Silo logo" width="64" height="64"></a> | <a href="https://www.plex.tv/"><img src="docs/images/plex-logo.svg" alt="Plex logo" width="64" height="64"></a> |
-| Resource and node monitoring, playback, and transcoder settings | Optional playback monitoring and session termination |
+| Required: health, playback, history, nodes and transcoder settings | Optional: playback, history and stats |
 
 Logos identify compatible services; no affiliation or endorsement is implied. See [logo sources](docs/images/LOGOS.md).
 
-Sonarr and Radarr are optional integrations for searching and replacing existing library items.
-InfiniDysk is an optional integration for System statistics and active-file monitoring, verified with IFD 1.5.0. See [InfiniDysk setup](#infinidysk-setup).
-
 ## Requirements
 
-- Silo with the **v2 administrator API** and an unscoped API key owned by an enabled administrator. Older v1-only servers are not supported.
-- Docker on AMD64 or ARM64. Host bandwidth and process monitoring require a Linux Docker host.
-- Optional: a Plex server-owner token, Sonarr/Radarr API keys, and HTTPS for push notifications.
+- Silo with the **v2 administrator API**. Older v1-only servers are not supported.
+- A Silo API key with **Full access**, owned by an enabled administrator.
+- Optional, recommended: a second Silo key with only the **`admin:monitor:read`** scope, for live session events (see [Silo API keys](#silo-api-keys)).
+- Optional: a Plex server-owner token, and outbound HTTPS to plex.tv for account linking.
+- Docker on AMD64 or ARM64, or any Linux machine for the release binary.
 
-**Restrict access to trusted administrators through an authenticated reverse proxy.** Siloscope has no built-in login. Dashboard access can allow stopping playback, changing settings, restarting Silo, and deleting media files when replacements are enabled.
+**Siloscope has no login.** Anyone who can reach it can stop streams, change Silo settings and restart Silo, and delete media files when replacements are enabled. Keep it on a private network or tailnet, or behind an authenticated reverse proxy. Never port-forward it.
 
-## Screenshots
+## Install
 
-Some screenshots show an earlier interface.
+### Docker, next to Silo (recommended)
 
-| System | Playing |
-| --- | --- |
-| <img src="docs/images/system.png" alt="System view with CPU, bandwidth, memory, disk usage, and top processes" width="280"> | <img src="docs/images/playing.png" alt="Playing view with active sessions and playback progress" width="280"> |
+Run Siloscope on the machine that runs Silo. It can then reach Silo over Silo's own Docker network, and its CPU, process and bandwidth panels measure the Silo host itself.
 
-| Nodes | Settings |
-| --- | --- |
-| <img src="docs/images/nodes.png" alt="Nodes view with health, routed streams, jobs, and resource usage" width="280"> | <img src="docs/images/settings.png" alt="System settings with item ordering, graph height, and visibility controls" width="280"> |
-
-| Playback selection | Transcoder settings |
-| --- | --- |
-| <img src="docs/images/playback-selection.png" alt="Playing view with session selection circles and the batch Terminate button" width="280"> | <img src="docs/images/transcoder.png" alt="Transcoder settings with hardware acceleration, tone mapping, and buffer controls" width="280"> |
-
-## Run with Docker Compose
-
-1. Copy [.env.example](.env.example) to `.env`.
-2. Set `SILO_URL` to the Silo base address reachable from the container, without an `/api/v2` suffix.
-3. Set `SILO_API_KEY` to an unscoped API key owned by an enabled Silo admin.
-4. On the Linux Docker host, run `ip route show default`. Set `HOST_NETWORK_INTERFACE` in `.env` to the interface shown after `dev`, such as `eth0` or `enp0s6`.
-5. Add optional integrations from the [configuration table](#configuration).
-6. For push notifications, set `PUSH_CONTACT` to your real `mailto:` address or HTTPS contact URL. This is a sender contact, not a recipient.
-7. Start the service with host bandwidth and process monitoring:
+1. Clone the repository on the Silo host and create the environment file:
 
    ```sh
-   docker compose -f compose.yaml -f compose.host-network.yaml -f compose.host-processes.yaml up -d
+   git clone https://github.com/neilmc78/siloscope /opt/siloscope && cd /opt/siloscope
+   cp .env.example .env && chmod 600 .env
    ```
 
-Use this same command after changing `.env`; a container restart alone does not apply environment changes. For image updates, pull the published image first, then recreate with the same files:
+2. Find Silo's container, its network and the host's network interface:
 
-```sh
-docker compose -f compose.yaml -f compose.host-network.yaml -f compose.host-processes.yaml pull
-docker compose -f compose.yaml -f compose.host-network.yaml -f compose.host-processes.yaml up -d
-```
+   ```sh
+   docker ps --format '{.Names}  {.Networks}  {.Ports}'
+   ip route show default
+   ```
 
-Open `http://127.0.0.1:8091`. Keep `.env` and API keys out of source control. Service URLs must be reachable from the container; `localhost` refers to the container itself.
+3. Edit `.env`:
 
-## Run with Portainer
+   | Setting | Value |
+   | --- | --- |
+   | `SILO_URL` | Silo's container name and **internal** port, for example `http://silo-silo-1:8080` |
+   | `SILO_API_KEY` / `SILO_MONITOR_API_KEY` | Your two Silo keys |
+   | `PLEX_URL` / `PLEX_TOKEN` | For example `http://192.168.1.50:32400` and your server-owner token |
+   | `HOST_NETWORK_INTERFACE` | The name after `dev`, for example `eth0` |
+   | `MONITOR_BIND` / `MONITOR_PORT` | `0.0.0.0` (or the host's LAN or Tailscale IP) and a free port, to open it from other devices |
+
+4. Attach Siloscope to Silo's network: create `compose.override.yaml` with the network name from step 2:
+
+   ```yaml
+   services:
+     silo-monitor:
+       networks: [silo]
+   networks:
+     silo:
+       external: true
+       name: silo_default
+   ```
+
+5. Start it with host bandwidth and process monitoring:
+
+   ```sh
+   docker compose -f compose.yaml -f compose.override.yaml -f compose.host-network.yaml -f compose.host-processes.yaml up -d
+   docker compose logs --tail 50
+   ```
+
+Rerun the same `up -d` after editing `.env`; a restart alone does not reload it. To update, `pull`, then `up -d` with the same files. If a pull is refused, make the `silo-monitor` package public on GitHub or `docker login ghcr.io`.
+
+### Portainer
 
 Set `SILO_URL`, `SILO_API_KEY`, and `HOST_NETWORK_INTERFACE` in your stack's environment variables. Add optional integrations as needed.
 
@@ -136,7 +177,7 @@ volumes:
 
 Deploy the stack. Apply later configuration changes with **Update the stack**.
 
-### Preserve existing data
+#### Preserve existing data
 
 Keep `/data` writable and persistent to retain history, notifications, and replacement records. Back it up securely. **Do not delete the volume or run `docker compose down -v` during updates.**
 
@@ -151,35 +192,43 @@ volumes:
 
 Replace the example name with your actual volume name and keep the service mount as `notification-data:/data`.
 
-## Run without Docker
+### Without Docker
 
-Each version tag (`v*`) publishes static Linux binaries for AMD64 and ARM64 on the repository's Releases page, with a systemd unit and an example configuration. Any Linux machine or container that can reach Silo works, including a small LXC container.
+Each version tag (`v*`) publishes static Linux binaries for AMD64 and ARM64 on the Releases page, with a systemd unit and an example configuration. Any Linux machine or container that can reach Silo works, including a small LXC container.
 
 ```sh
-VERSION=v0.1.0   # the release to install
+VERSION=v0.1.0   # a tag from the Releases page
 ARCH=amd64       # or arm64
 BASE=https://github.com/neilmc78/siloscope/releases/download/$VERSION
 
 useradd --system --no-create-home --shell /usr/sbin/nologin siloscope
-curl -fL -o /usr/local/bin/siloscope "$BASE/siloscope-linux-$ARCH"
-chmod 755 /usr/local/bin/siloscope
-curl -fL -o /etc/systemd/system/siloscope.service "$BASE/siloscope.service"
+wget -O /usr/local/bin/siloscope "$BASE/siloscope-linux-$ARCH" && chmod 755 /usr/local/bin/siloscope
+wget -O /etc/systemd/system/siloscope.service "$BASE/siloscope.service"
 install -d -m 700 /etc/siloscope
-curl -fL -o /etc/siloscope/siloscope.env "$BASE/siloscope.env.example"
-chmod 600 /etc/siloscope/siloscope.env
+wget -O /etc/siloscope/siloscope.env "$BASE/siloscope.env.example" && chmod 600 /etc/siloscope/siloscope.env
 ```
 
-Edit `/etc/siloscope/siloscope.env`, then start it:
+Edit `/etc/siloscope/siloscope.env`, then `systemctl daemon-reload && systemctl enable --now siloscope`. Data is kept in `/var/lib/siloscope`. On a different machine from Silo, CPU, memory, disk and bandwidth come from Silo's own statistics and the top-processes panel is unavailable.
+
+## Silo API keys
+
+Siloscope uses two keys:
+
+| Key | Access | Used for |
+| --- | --- | --- |
+| `SILO_API_KEY` | **Full access** | Everything that reads or changes Silo: health, sessions, history, users, libraries, transcoder settings, restarts and stopping streams |
+| `SILO_MONITOR_API_KEY` | **Selected scopes → `admin:monitor:read`** only | The live session events socket, which Silo only opens for this scope |
+
+Create both under **Admin → API Keys → Create Key** in Silo. Builds without the scope choice on that page can create the monitoring key with the full key instead:
 
 ```sh
-systemctl daemon-reload
-systemctl enable --now siloscope
-journalctl -u siloscope -f
+curl -sS -X POST "$SILO_URL/api/v2/admin/api-keys" \
+  -H "Authorization: Bearer $SILO_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"label":"Siloscope monitor","scopes":["admin:monitor:read"]}'
 ```
 
-Data is kept in `/var/lib/siloscope`. To upgrade, download the new binary over `/usr/local/bin/siloscope` and run `systemctl restart siloscope`.
-
-Without `HOST_PROC_DIR` and `HOST_NETWORK_STATS_DIR`, CPU, memory, disk and bandwidth come from Silo's own statistics and the top-processes panel is unavailable. That is the right setup when Siloscope runs on a different machine from Silo.
+Without the monitoring key, live Silo plays are picked up by a 15-second poll instead.
 
 ## Configuration
 
@@ -206,9 +255,53 @@ Without `HOST_PROC_DIR` and `HOST_NETWORK_STATS_DIR`, CPU, memory, disk and band
 | `PUSH_DATA_DIR` | `/data/push` in Compose | Persistent notification data; required when push is enabled |
 | `ACTIVITY_DATA_DIR` | `/data/activity` in Docker/Compose | Playback history database (`siloscope.db`); set explicitly for standalone binaries |
 
-The image is published for AMD64 and ARM64 at `ghcr.io/neilmc78/silo-monitor:latest`.
+The image is published for AMD64 and ARM64 at `ghcr.io/neilmc78/silo-monitor:latest`; release binaries are attached to each `v*` tag.
 
-## Push notifications
+## How it works
+
+### Playback history
+
+History is stored in SQLite at `ACTIVITY_DATA_DIR/siloscope.db` and kept indefinitely. Back up the data volume to keep it.
+
+| Source | How plays are recorded |
+| --- | --- |
+| Silo | Silo's own finalized playback log is the authority for ended plays, with measured watch and pause time, client, device, IP and stream decisions. On first start Siloscope imports all of it. Live plays follow Silo's session events (with `SILO_MONITOR_API_KEY`) or a 15-second poll. |
+| Plex | Siloscope listens on Plex's notification websocket. Each play records the source file (codec, resolution, HDR, bitrate) and the stream (decisions, hardware transcoding, subtitle burn-in, bandwidth, LAN/WAN). Watch and pause time are measured from Plex's position updates; seeks are not counted. A play counts as watched at 85%. On first start, Plex's own watch history is imported for earlier views; Plex keeps only finished views, so those rows have no duration or stream details. |
+
+Silo posters are cached in the data directory the first time they are seen, so history keeps its artwork after Silo's signed image links expire.
+
+### Stats
+
+Stats cover a week, month, year or all time, for Silo, Plex or both. A resumed play counts once, and unfinished attempts under 30 seconds are ignored, as in Tautulli. A show watched on both servers is one title. Concurrent streams are worked out from play start and end times, so imported history counts too. Weekday and hour use the viewing device's time zone.
+
+### Linked accounts
+
+Every Silo and Plex account belongs to a person. A Silo account signed in through the [Plex sign-in plugin](https://github.com/neilmc78/silo-plugin-auth-plex) carries its plex.tv account ID, and Siloscope matches it to the same Plex account automatically. Plex account names come from the Plex server; plex.tv supplies the IDs, so allow outbound HTTPS to plex.tv. People who use only one server stay on their own.
+
+`GET /api/people` lists people and their accounts. `POST /api/people` links accounts by hand (`{"action":"link","account_ids":[1,2]}`), unlinks one (`{"action":"unlink","account_id":1}`) or renames a person (`{"action":"rename","person_id":1,"display_name":"Sam"}`). Automatic matching never undoes a manual change.
+
+### Disk usage and library sizes
+
+Silo reports disk usage per mount. Library folders on one shared mount, such as a NAS share, are shown once and named after their Silo libraries. Each library's size and file count are totalled from Silo's catalog every six hours, without scanning the share.
+
+### Stream nodes
+
+The **Nodes** tab shows Silo's remote stream nodes: transcode workers that convert streams live on another machine, and proxies that relay streams to viewers. A single-server Silo has none; hide the tab under Settings → Navigation.
+
+## Settings
+
+- **Appearance:** theme, accent colour (presets or any colour) and animated effects: Console scanlines and cursor, Matrix code rain. Reduced-motion devices always get still versions.
+- **Navigation:** reorder the bottom tabs or hide the ones you don't use. Settings always stays.
+- **System, Playing, Nodes:** choose which panels and details appear, reorder System panels, and set chart height and time range.
+- **Transcoder:** Silo's transcoding and 4K permissions, hardware acceleration, HDR tone mapping, buffering, throttling and playback routing.
+- **Restart:** see pending restart requirements and restart Silo after confirmation.
+- **Notifications:** push alerts; see below.
+
+Display settings are saved per device.
+
+## Optional integrations
+
+### Push notifications
 
 Choose the alerts you want under **Settings > Notifications**:
 
@@ -224,7 +317,7 @@ Set `PUSH_CONTACT`, open Siloscope over HTTPS, and enable notifications on each 
 
 Alerts can arrive with the dashboard closed. Delivery depends on connectivity and device permissions; Siloscope cannot alert while it is down.
 
-## InfiniDysk setup
+### InfiniDysk
 
 InfiniDysk uses the private backend (normally port 8080), not its port 3000 browser interface. Do not publish its backend port for this integration. Generate a shared secret with `openssl rand -hex 32`, set it as `FRONTEND_BACKEND_API_KEY` in the InfiniDysk stack and as `IFD_API_KEY` in Siloscope, then recreate both services. Recreating IFD may briefly interrupt streams or downloads. Keep the existing normal IFD API key unchanged: that key supports statistics but cannot authenticate the active-file WebSocket in IFD 1.5.0.
 
@@ -242,43 +335,7 @@ Throughput is sampled every five seconds; fetched throughput uses IFD's recorded
 
 Under **Settings > System**, move the InfiniDysk panel up or down, toggle its individual elements, or change the shared graph height and time window. These preferences are saved per device. Existing saved panel orders are preserved, with InfiniDysk appended until repositioned.
 
-## Monitoring and playback
-
-- **System:** resource charts, free disk space (library folders on one shared mount appear once, named after their Silo libraries, with each library's size from Silo's catalog, refreshed every six hours), top CPU processes, and the Silo API server build. Optional InfiniDysk monitoring adds fetched/served throughput, connections in use, and active filenames with fetching speed and bytes fetched. No provider names are displayed.
-- **Playing:** Silo and Plex sessions together, including users, clients, progress, resolution, audio details, source-file bitrate, and direct-play/transcode status.
-- **History:** every play with All/Silo/Plex filters and expandable details: watch time, pause time, progress, client, platform, quality, LAN/WAN and IP. See [Playback history](#playback-history).
-- **Stats:** watch statistics across Silo and Plex for a week, month, year or all time, filterable by server. The overview has plays, watch time, users and titles; plays and watch time over time; concurrent streams and transcodes with the peak; plays by weekday and hour in your browser's time zone; stream quality; top platforms; most watched and most popular movies and shows; most active users; and recent plays. **Users** lists everyone with plays, watch time, devices and last activity; tapping a person shows their accounts on each server, charts, top titles, devices, IP addresses and recent plays. A resumed play counts once, and attempts under 30 seconds that were not finished are ignored.
-- **Nodes:** playback-node health, resource usage, routed streams, and jobs. Stale or unavailable data is clearly marked.
-
-## Playback history
-
-History is stored in SQLite at `ACTIVITY_DATA_DIR/siloscope.db` and kept indefinitely. Back up the `/data` volume to keep it.
-
-| Source | How plays are recorded |
-| --- | --- |
-| Silo | Silo's own finalized playback log is the authority for ended plays, with measured watch and pause time, client, device, IP, and stream decisions. On first start Siloscope imports all of it. Live plays come from Silo's session events when `SILO_MONITOR_API_KEY` is set, otherwise from a 15-second session poll. |
-| Plex | Siloscope listens on Plex's notification websocket. Each play records the source file (codec, resolution, HDR, bitrate) and the stream (decisions, hardware transcoding, subtitle burn-in, bandwidth, LAN/WAN). Watch and pause time are measured from Plex's position updates; seeks are not counted. A play counts as watched at 85%. On first start Plex's own watch history is imported for earlier views; Plex keeps only finished views, so those rows have no duration or stream details. |
-
-Resumed plays of the same item by the same user are grouped. Per-minute stream counts and bandwidth are also recorded for future graphs.
-
-Silo refuses the live session socket to unscoped keys, so `SILO_API_KEY` cannot be reused. Silo's API key page sets only a rate limit, so create the monitoring key through the API with your existing admin key:
-
-```sh
-curl -sS -X POST "$SILO_URL/api/v2/admin/api-keys" \
-  -H "Authorization: Bearer $SILO_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"label":"Siloscope monitor","scopes":["admin:monitor:read"]}'
-```
-
-Copy `key` from the response into `SILO_MONITOR_API_KEY`; Silo shows it only once. The new key belongs to the same admin account.
-
-### Linked accounts
-
-Each Silo and Plex account belongs to a person. A Silo account linked to Plex through the Plex sign-in plugin is matched automatically to that person's Plex account, using the plex.tv account ID. Siloscope reads the Plex owner and shared users from plex.tv, so the container needs outbound HTTPS to plex.tv; without it, matching falls back to the account ID in each Plex user's avatar URL. Accounts used on only one server stay on their own. `GET /api/people` lists people and their accounts; `POST /api/people` links accounts by hand (`{"action":"link","account_ids":[1,2]}`), unlinks one (`{"action":"unlink","account_id":1}`) or renames a person (`{"action":"rename","person_id":1,"display_name":"Sam"}`). Manual changes are never undone by automatic matching.
-
-The previous `history.json` file is no longer read. Silo plays it held are re-imported from Silo; Plex plays are replaced by Plex's history import.
-
-## Find and replace media
+### Library: find and replace media
 
 **Library** searches titles already managed by Sonarr or Radarr; it does not add new titles. Search is available without enabling replacements.
 
@@ -296,13 +353,6 @@ An individually stored episode from a season pack can be replaced: only that epi
 
 **Replacement can interrupt playback and does not guarantee a new or better file.** Files containing multiple episodes and files without identifiable download history must be handled directly in Arr. If an operation is uncertain, check Arr before retrying; do not clear replacement records to bypass the warning.
 
-## Terminate playback
+### Terminate playback
 
 Select one or more Silo or Plex sessions in **Playing**, then choose **Terminate**. This acts immediately without a confirmation dialog.
-
-## Settings
-
-- **Transcoder:** control transcoding and 4K permissions, hardware acceleration, HDR tone mapping, buffering, throttling, and playback routing.
-- **Restart:** see pending restart requirements and restart Silo after confirmation. Restarting can interrupt playback.
-- **Appearance:** choose a theme (Rose, Midnight, Light, High contrast, Console, Matrix or Synthwave), an accent colour from presets or a custom colour, and whether animated effects run (Console scanlines and cursor, Matrix code rain). Saved per device; reduced-motion devices always get still effects.
-- **Display:** choose visible panels and playback details, reorder all five tabs, and adjust chart height and time range. Preferences are saved per device.
