@@ -42,15 +42,18 @@ func (a *application) libraryUsageFailed(err error) {
 const libraryUsageInterval = 6 * time.Hour
 
 func (a *application) runLibraryUsage(ctx context.Context) {
-	a.refreshLibraryUsage(ctx)
-	ticker := time.NewTicker(libraryUsageInterval)
-	defer ticker.Stop()
 	for {
-		select {
-		case <-ctx.Done():
+		a.refreshLibraryUsage(ctx)
+		// A failed refresh (Silo busy or restarting) tries again soon rather
+		// than leaving the sizes empty for six hours.
+		a.libraryUsage.mu.RLock()
+		next := libraryUsageInterval
+		if a.libraryUsage.lastError != "" {
+			next = 10 * time.Minute
+		}
+		a.libraryUsage.mu.RUnlock()
+		if sleepContext(ctx, next) != nil {
 			return
-		case <-ticker.C:
-			a.refreshLibraryUsage(ctx)
 		}
 	}
 }
