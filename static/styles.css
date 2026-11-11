@@ -1779,3 +1779,15 @@ button.stats-top-name { cursor: pointer; text-decoration: underline; text-decora
   background: var(--surface); color: var(--muted); font-size: 14px;
 }
 .account-bar strong { color: var(--text); }
+
+.restart-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+.stats-person-header.renaming { grid-template-columns: 44px minmax(0, 1fr); align-items: start; }
+.stats-rename-form { display: grid; gap: 8px; min-width: 0; }
+.stats-rename-input {
+  width: 100%; min-width: 0; min-height: 44px; padding: 8px 12px;
+  border: 1px solid var(--primary); border-radius: 10px;
+  background: var(--surface); color: var(--text); font: inherit; font-size: 20px; font-weight: 700;
+}
+.stats-rename-input:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.stats-rename-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.stats-rename-error { margin: 0; color: var(--danger); font-size: 13px; }

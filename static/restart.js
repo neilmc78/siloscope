@@ -7,7 +7,12 @@
   const message = document.getElementById("settings-restart-message");
   const button = document.getElementById("settings-restart-now");
   const buttonLabel = document.getElementById("settings-restart-button-label");
+  const cancel = document.getElementById("settings-restart-cancel");
   let pending = false;
+  // Restart asks for a second tap on the page itself: browser pop-ups such as
+  // confirm() are blocked in embedded web views (nzb360 and similar).
+  let confirming = false;
+  let confirmTimer;
   let preview = false;
   let version = 0;
   let inFlight = false;
@@ -22,14 +27,23 @@
   function render(unavailable = false) {
     banner.hidden = !pending && !restarting;
     button.disabled = restarting;
-    buttonLabel.textContent = restarting ? "Restarting..." : "Restart now";
+    buttonLabel.textContent = restarting ? "Restarting..." : confirming ? "Confirm restart" : "Restart now";
+    cancel.hidden = !confirming || restarting;
     title.textContent = preview ? "Restart required (preview)" : "Silo restart required";
     message.textContent = unavailable ? "Restart status is temporarily unavailable. The last known state still requires a restart." : preview ? "Preview settings are pending a restart. Live Silo is unchanged." : "Some saved settings will take effect after Silo is restarted.";
     if (restarting) {
       title.textContent = preview ? "Restarting preview" : "Waiting for Silo to restart";
       message.textContent = "Waiting for the server to come back online.";
     }
+    if (confirming && !restarting) {
+      message.textContent = preview ? "Simulate a restart in the local preview? Live Silo will not restart." : "Restart Silo now? Active playback may be interrupted while the server restarts.";
+    }
     if (failure) message.textContent = failure;
+  }
+
+  function stopConfirming() {
+    clearTimeout(confirmTimer);
+    confirming = false;
   }
 
   async function refresh() {
@@ -77,7 +91,15 @@
       render();
       return;
     }
-    if (!window.confirm(preview ? "Simulate a restart in the local preview? Live Silo will not restart." : "Restart Silo now? Active playback may be interrupted while the server restarts.")) return;
+    if (!confirming) {
+      confirming = true;
+      failure = "";
+      clearTimeout(confirmTimer);
+      confirmTimer = setTimeout(() => { confirming = false; render(); }, 8000);
+      render();
+      return;
+    }
+    stopConfirming();
     version++;
     restarting = true;
     restartStartedAt = startedAt;
@@ -98,6 +120,12 @@
     }
     render();
     refresh();
+  });
+
+  cancel.addEventListener("click", () => {
+    stopConfirming();
+    render();
+    button.focus();
   });
 
   window.addEventListener("monitor-restart-required", event => {

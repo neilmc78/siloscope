@@ -20,7 +20,7 @@ const MonitorStats = (() => {
   const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
   const zone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 
-  const state = { people: [], notice: "", view: "overview", range: "7d", source: "all", person: null, data: null, users: null, sort: "plays", query: "", loading: false, error: "" };
+  const state = { renaming: false, renameDraft: "", renameError: "", renameSaving: false, people: [], notice: "", view: "overview", range: "7d", source: "all", person: null, data: null, users: null, sort: "plays", query: "", loading: false, error: "" };
   let request = 0;
 
   function make(tag, className, text) {
@@ -429,6 +429,7 @@ const MonitorStats = (() => {
   }
 
   function openPerson(id) {
+    stopRenaming();
     state.person = id;
     state.notice = "";
     load();
@@ -513,15 +514,105 @@ const MonitorStats = (() => {
     back.setAttribute("aria-label", "Back to users");
     back.title = "Back to users";
     back.append(make("span", "ui-icon icon-back"));
-    back.addEventListener("click", () => { state.person = null; state.view = "users"; load(); });
+    back.addEventListener("click", () => { stopRenaming(); state.person = null; state.view = "users"; load(); });
+    if (state.renaming) {
+      header.classList.add("renaming");
+      header.append(back, renameForm(person));
+      return header;
+    }
     const rename = make("button", "stats-text-button", "Rename");
     rename.type = "button";
     rename.addEventListener("click", () => {
-      const name = window.prompt("Name shown for this person", person.name);
-      if (name && name.trim() && name.trim() !== person.name) changePeople({ action: "rename", person_id: person.id, display_name: name.trim() }, person.id);
+      state.renaming = true;
+      state.renameDraft = person.name;
+      state.renameError = "";
+      render();
     });
     header.append(back, make("span", "stats-avatar large", (person.name || "?").charAt(0).toUpperCase()), make("h3", "stats-person-name", person.name), rename);
     return header;
+  }
+
+  function stopRenaming() {
+    state.renameFocused = false;
+    state.renaming = false;
+    state.renameDraft = "";
+    state.renameError = "";
+    state.renameSaving = false;
+  }
+
+  // The name becomes an editable field on the page. Browser pop-ups such as
+  // prompt() look out of place on phones and are blocked in embedded web views.
+  function renameForm(person) {
+    const form = make("form", "stats-rename-form");
+    form.noValidate = true;
+    const input = document.createElement("input");
+    input.className = "stats-rename-input";
+    input.value = state.renameDraft;
+    input.maxLength = 100;
+    input.autocomplete = "off";
+    input.spellcheck = false;
+    input.setAttribute("enterkeyhint", "done");
+    input.setAttribute("aria-label", "Name shown for this person");
+    input.disabled = state.renameSaving;
+    input.addEventListener("input", () => { state.renameDraft = input.value; });
+    input.addEventListener("keydown", event => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        stopRenaming();
+        render();
+      }
+    });
+    const actions = make("div", "stats-rename-actions");
+    const cancel = make("button", "stats-text-button", "Cancel");
+    cancel.type = "button";
+    cancel.disabled = state.renameSaving;
+    cancel.addEventListener("click", () => { stopRenaming(); render(); });
+    const save = make("button", "stats-filter active", state.renameSaving ? "Saving…" : "Save");
+    save.type = "submit";
+    save.disabled = state.renameSaving;
+    actions.append(cancel, save);
+    form.append(input);
+    if (state.renameError) {
+      const error = make("p", "stats-rename-error", state.renameError);
+      error.setAttribute("role", "alert");
+      form.append(error);
+    }
+    form.append(actions);
+    form.addEventListener("submit", async event => {
+      event.preventDefault();
+      const name = state.renameDraft.trim();
+      if (!name || name.length > 100) {
+        state.renameError = "Name must be 1 to 100 characters.";
+        render();
+        return;
+      }
+      if (name === person.name) {
+        stopRenaming();
+        render();
+        return;
+      }
+      state.renameSaving = true;
+      state.renameError = "";
+      render();
+      const saved = await changePeople({ action: "rename", person_id: person.id, display_name: name }, person.id);
+      if (saved) stopRenaming();
+      else {
+        state.renameSaving = false;
+        state.renameError = state.notice || "The name could not be saved.";
+        state.notice = "";
+        render();
+      }
+    });
+    // Focus once the form is on the page; keep the caret where it was on re-renders.
+    requestAnimationFrame(() => {
+      if (!input.isConnected || state.renameSaving) return;
+      input.focus();
+      if (!state.renameFocused) {
+        input.select();
+        state.renameFocused = true;
+      }
+    });
+    return form;
   }
 
   // changePeople links, unlinks or renames, then shows the person who now
@@ -539,9 +630,11 @@ const MonitorStats = (() => {
       state.notice = { link: "Accounts linked", unlink: "Account unlinked", rename: "Name saved" }[body.action];
       if (target) state.person = target.id;
       load();
+      return true;
     } catch (error) {
       state.notice = error.message || "The change could not be saved";
       render();
+      return false;
     }
   }
 
