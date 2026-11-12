@@ -8,6 +8,12 @@
   const button = document.getElementById("settings-restart-now");
   const buttonLabel = document.getElementById("settings-restart-button-label");
   const cancel = document.getElementById("settings-restart-cancel");
+  // The always-available Restart Server button and its on-page confirmation.
+  const serverButton = document.getElementById("settings-restart-server");
+  const strip = document.getElementById("settings-restart-confirm");
+  const stripCancel = document.getElementById("settings-restart-confirm-cancel");
+  const stripGo = document.getElementById("settings-restart-confirm-go");
+  let stripTimer;
   let pending = false;
   // Restart asks for a second tap on the page itself: browser pop-ups such as
   // confirm() are blocked in embedded web views (nzb360 and similar).
@@ -25,7 +31,8 @@
   const visible = () => !section.hidden && !document.hidden;
 
   function render(unavailable = false) {
-    banner.hidden = !pending && !restarting;
+    banner.hidden = !pending && !restarting && !failure;
+    serverButton.disabled = restarting;
     button.disabled = restarting;
     buttonLabel.textContent = restarting ? "Restarting..." : confirming ? "Confirm restart" : "Restart now";
     cancel.hidden = !confirming || restarting;
@@ -100,6 +107,17 @@
       return;
     }
     stopConfirming();
+    await requestRestart();
+  });
+
+  // requestRestart asks Silo to restart; the banner then follows its progress.
+  async function requestRestart() {
+    if (restarting) return;
+    if (window.TranscoderSettings?.canRestart() === false) {
+      failure = "Wait for settings to finish saving, or correct invalid values, before restarting.";
+      render();
+      return;
+    }
     version++;
     restarting = true;
     restartStartedAt = startedAt;
@@ -120,6 +138,35 @@
     }
     render();
     refresh();
+  }
+
+  function closeStrip() {
+    clearTimeout(stripTimer);
+    strip.hidden = true;
+    serverButton.setAttribute("aria-expanded", "false");
+  }
+
+  serverButton.addEventListener("click", () => {
+    if (restarting) return;
+    if (!strip.hidden) {
+      closeStrip();
+      return;
+    }
+    strip.hidden = false;
+    serverButton.setAttribute("aria-expanded", "true");
+    clearTimeout(stripTimer);
+    stripTimer = setTimeout(closeStrip, 15000);
+    stripGo.focus();
+  });
+
+  stripCancel.addEventListener("click", () => {
+    closeStrip();
+    serverButton.focus();
+  });
+
+  stripGo.addEventListener("click", async () => {
+    closeStrip();
+    await requestRestart();
   });
 
   cancel.addEventListener("click", () => {
