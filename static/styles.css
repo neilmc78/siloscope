@@ -1791,3 +1791,20 @@ button.stats-top-name { cursor: pointer; text-decoration: underline; text-decora
 .stats-rename-input:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .stats-rename-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .stats-rename-error { margin: 0; color: var(--danger); font-size: 13px; }
+
+.icon-rotate { --icon-source: url("/icons/rotate-ccw.svg"); }
+.settings-actions { display: flex; justify-content: flex-end; margin: -4px 0 12px; }
+.restart-server {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 6px 12px;
+  border: 1px solid var(--border); border-radius: 8px; background: transparent; color: var(--text);
+  font: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
+}
+.restart-server .ui-icon { width: 15px; height: 15px; }
+.restart-server:hover { border-color: var(--muted); }
+.restart-server:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.restart-server:disabled { opacity: 0.5; cursor: default; }
+.settings-restart-confirm {
+  display: grid; gap: 12px; margin-bottom: 16px; padding: 14px 16px;
+  border-left: 3px solid var(--warning); background: color-mix(in srgb, var(--warning) 8%, transparent);
+}
+.settings-restart-confirm p { margin: 0; color: var(--text); font-size: 13px; line-height: 1.5; }

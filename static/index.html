@@ -11,13 +11,13 @@
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=auth-20261110-r1">
     <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png?v=auth-20261110-r1">
     <link rel="manifest" href="/site.webmanifest?v=auth-20261110-r1">
-    <link rel="stylesheet" href="/styles.css?v=inline-20261111-r1">
+    <link rel="stylesheet" href="/styles.css?v=restartbtn-20261112-r1">
     <script src="/preferences.js?v=auth-20261110-r1" defer></script>
     <script src="/activity.js?v=auth-20261110-r1" defer></script>
     <script src="/app.js?v=auth-20261110-r1" defer></script>
     <script src="/infinidysk.js?v=auth-20261110-r1" defer></script>
     <script src="/transcoder.js?v=auth-20261110-r1" defer></script>
-    <script src="/restart.js?v=inline-20261111-r1" defer></script>
+    <script src="/restart.js?v=restartbtn-20261112-r1" defer></script>
     <script src="/notifications.js?v=auth-20261110-r1" defer></script>
     <script src="/settings.js?v=auth-20261110-r1" defer></script>
     <script src="/stats.js?v=inline-20261111-r1" defer></script>
@@ -211,6 +211,16 @@
         <div class="section-heading">
           <div><h2 id="settings-heading">Settings</h2></div>
           <button id="reset-settings" class="settings-command" type="button">Reset all</button>
+        </div>
+        <div class="settings-actions">
+          <button id="settings-restart-server" class="restart-server" type="button" aria-controls="settings-restart-confirm" aria-expanded="false"><span class="ui-icon icon-rotate" aria-hidden="true"></span><span>Restart Server</span></button>
+        </div>
+        <div id="settings-restart-confirm" class="settings-restart-confirm" role="group" aria-label="Confirm restart" hidden>
+          <p>Restart Silo? It shuts down and comes back only if Docker or systemd restarts it. Active streams will be interrupted.</p>
+          <div class="restart-actions">
+            <button id="settings-restart-confirm-cancel" class="settings-command" type="button">Cancel</button>
+            <button id="settings-restart-confirm-go" class="restart-now" type="button">Restart</button>
+          </div>
         </div>
         <div id="settings-restart-banner" class="settings-restart-banner" role="status" hidden>
           <div class="settings-restart-copy">
