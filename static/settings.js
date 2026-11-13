@@ -375,7 +375,7 @@
       preferences.navHidden = [];
     }
     if (activeGroup === "appearance") {
-      preferences.theme = "rose";
+      preferences.theme = model.defaultTheme;
       preferences.accent = "";
       preferences.effects = true;
     }

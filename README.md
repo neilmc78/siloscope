@@ -221,7 +221,8 @@ Edit `/etc/siloscope/siloscope.env`, then `systemctl daemon-reload && systemctl 
 Siloscope asks you to sign in with a **Silo administrator** account. It sends the username and password to Silo's own sign-in, and for accounts with two-step sign-in, the authenticator or recovery code as well. Any account that isn't an administrator is refused. Siloscope then signs straight back out of Silo, keeps no password and no Silo session, and gives the browser its own session cookie for 30 days.
 
 - Every 15 minutes Siloscope checks with Silo that each signed-in account still exists, is enabled and is still an administrator, and signs out any that isn't.
-- Sign-in attempts are limited to 10 per 10 minutes per address, on top of Silo's own limits.
+- Sign-in attempts are limited per name (5 wrong passwords in 15 minutes) and per address (20 in 10 minutes). Silo locks a name for 15 minutes after 10 failures, and that lock refuses even the right password everywhere, so Siloscope stops first: wrong passwords sent through Siloscope can't lock an account out of Silo. A correct password clears the count, as in Silo. [Open from Silo](#open-siloscope-from-silo) still works while a name is locked here.
+- Behind a reverse proxy (nginx, Tailscale serve or Funnel), Siloscope reads the visitor's address from `X-Forwarded-For`, but only from proxies listed in `TRUSTED_PROXIES`. The default covers a proxy on the same machine: `127.0.0.0/8,::1/128` for the binary, plus Docker's private range `172.16.0.0/12` in `compose.yaml`, because a proxy on the host reaches the container from Docker's gateway address. Set `TRUSTED_PROXIES` yourself if your proxy runs on another machine. Siloscope passes the visitor's address on to Silo, so Silo's own per-address limits apply to the visitor rather than to Siloscope.
 - Requests that change anything are refused when they come from another website.
 - **Settings** shows who is signed in, with a **Sign out** button.
 - Plex sign-in and passkeys aren't supported here: sign in with the account's Silo password. An account that uses passkeys can add an authenticator app in Silo.
@@ -232,17 +233,22 @@ If an authenticating reverse proxy already guards Siloscope, set `AUTH_MODE=none
 
 ## Open Siloscope from Silo
 
-| Admin sidebar | Plugin settings |
-| --- | --- |
-| <img src="docs/images/silo-plugin-sidebar.png" alt="Silo admin sidebar with Siloscope under Plugin Apps" width="240"> | <img src="docs/images/silo-plugin-settings.png" alt="Siloscope plugin settings in Silo with the Siloscope URL field" width="420"> |
+| Admin sidebar | Plugin settings in Silo | Siloscope Settings |
+| --- | --- | --- |
+| <img src="docs/images/silo-plugin-sidebar.png" alt="Silo admin sidebar with Siloscope under Plugin Apps" width="200"> | <img src="docs/images/silo-plugin-settings.png" alt="Siloscope plugin settings in Silo with the Siloscope URL and Launch secret fields" width="330"> | <img src="docs/images/silo-launch-card.png" alt="Open from Silo card in Siloscope Settings with the launch secret, Show and Copy" width="330"> |
 
-A small Silo plugin adds **Siloscope** under **Plugin Apps** in Silo's admin sidebar. It doesn't change Silo itself.
+A small Silo plugin adds **Siloscope** under **Plugin Apps** in Silo's admin sidebar, and can sign you in to Siloscope with one click. It doesn't change Silo itself.
 
 1. From the [latest release](https://github.com/neilmc78/siloscope/releases/latest), download `siloscope-silo-plugin-linux-amd64` (or `-arm64`) to match the machine Silo runs on.
 2. In Silo, go to **Admin → Integrations → Plugins**, upload the file, and open **Siloscope**.
-3. Enter the address you use to open Siloscope in a browser, for example `http://192.168.1.10:8080`, and press **Save**.
+3. Enter the address you use to open Siloscope in a browser, for example `https://silo.example.ts.net:8443`.
+4. For one-click sign-in, open **Settings → Open from Silo** in Siloscope, press **Copy**, paste the secret into **Launch secret** in Silo, and press **Save**.
 
-Only Silo administrators see the link. It opens Siloscope in the same tab, so the browser's Back button returns to Silo, and Siloscope's own sign-in still applies. Silo marks the plugin **Unverified** because it comes from an upload rather than a plugin catalog. **Check Connection** reports that it isn't supported, which is expected. The plugin's source is in [`silo-plugin/`](silo-plugin/).
+**Which address.** Your browser opens it, not Silo, so `127.0.0.1` or `localhost` only works in a browser on the Silo machine itself. Use an address every device you use can reach: your Tailscale name with Siloscope's port works at home and away. When you open Silo over `https`, give Siloscope an `https` address too, or the browser warns before sending the sign-in.
+
+**How the one-click sign-in works.** Silo tells the plugin who opened the link. Silo strips any such header a browser sends, and sets the administrator role only for an acting admin. The plugin signs a one-minute, single-use token with the shared secret, and your browser posts it to Siloscope. Siloscope checks the signature, the expiry and that the token hasn't been used, then asks Silo with its API key that the account is still an enabled administrator before opening a session. No password is involved. The secret is kept in Siloscope's database, or set it with `SILO_LAUNCH_SECRET`. **Make a new secret** stops the old one working at once. If the secrets don't match, Siloscope shows its sign-in page and says so.
+
+Only Silo administrators see the link. It opens in the same tab, so Back returns to Silo. Silo marks the plugin **Unverified** because it comes from an upload rather than a plugin catalog. **Check Connection** says it isn't supported: Silo only runs connection checks for metadata and marker plugins (see [docs/upstream/silo-notes.md](docs/upstream/silo-notes.md)). The plugin's source is in [`silo-plugin/`](silo-plugin/).
 
 ## Silo API keys
 

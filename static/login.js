@@ -57,6 +57,23 @@
     input.focus();
   }
 
+  // A refused one-click sign-in from Silo lands here with a reason.
+  const launchMessages = {
+    secret: "Silo's link uses a different secret from Siloscope. Sign in below, then copy the secret from Settings → Open from Silo into the plugin's Launch secret in Silo.",
+    expired: "That link from Silo had expired or was already used. Open Siloscope from Silo's sidebar again, or sign in below.",
+    admin: "Silo says this account isn't an enabled administrator.",
+    silo: "Siloscope couldn't check your account with Silo. Try again shortly, or sign in below.",
+    invalid: "That link from Silo wasn't valid. Open Siloscope from Silo's sidebar again, or sign in below.",
+  };
+  const params = new URLSearchParams(location.search);
+  const launchReason = params.get("launch");
+  if (launchReason) {
+    showError($("login-error"), launchMessages[launchReason] || launchMessages.invalid);
+    params.delete("launch");
+    const query = params.toString();
+    history.replaceState(null, "", location.pathname + (query ? `?${query}` : ""));
+  }
+
   $("login-reveal").addEventListener("click", event => {
     const input = $("login-password");
     const reveal = input.type === "password";

@@ -11,18 +11,18 @@
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=auth-20261110-r1">
     <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png?v=auth-20261110-r1">
     <link rel="manifest" href="/site.webmanifest?v=auth-20261110-r1">
-    <link rel="stylesheet" href="/styles.css?v=restartbtn-20261112-r1">
-    <script src="/preferences.js?v=auth-20261110-r1" defer></script>
+    <link rel="stylesheet" href="/styles.css?v=silolaunch-20261113-r1">
+    <script src="/preferences.js?v=silolaunch-20261113-r1" defer></script>
     <script src="/activity.js?v=auth-20261110-r1" defer></script>
     <script src="/app.js?v=auth-20261110-r1" defer></script>
     <script src="/infinidysk.js?v=auth-20261110-r1" defer></script>
     <script src="/transcoder.js?v=auth-20261110-r1" defer></script>
     <script src="/restart.js?v=restartbtn-20261112-r1" defer></script>
     <script src="/notifications.js?v=auth-20261110-r1" defer></script>
-    <script src="/settings.js?v=auth-20261110-r1" defer></script>
+    <script src="/settings.js?v=silolaunch-20261113-r1" defer></script>
     <script src="/stats.js?v=inline-20261111-r1" defer></script>
     <script src="/theme-effects.js?v=auth-20261110-r1" defer></script>
-    <script src="/account.js?v=auth-20261110-r1" defer></script>
+    <script src="/account.js?v=silolaunch-20261113-r1" defer></script>
     <script src="/library.js?v=auth-20261110-r1" defer></script>
   </head>
   <body>
@@ -236,6 +236,27 @@
           <span>Signed in as <strong id="account-name"></strong></span>
           <button id="account-signout" class="settings-command" type="button">Sign out</button>
         </div>
+        <section id="launch-card" class="launch-card" aria-labelledby="launch-heading" hidden>
+          <h3 id="launch-heading">Open from Silo</h3>
+          <p>With the Siloscope plugin installed in Silo, paste this secret into the plugin's <strong>Launch secret</strong> (Admin → Plugins → Siloscope). Siloscope in Silo's sidebar then opens already signed in.</p>
+          <div class="launch-secret-row">
+            <input id="launch-secret" class="launch-secret" type="password" readonly autocomplete="off" spellcheck="false" aria-label="Launch secret">
+            <button id="launch-reveal" class="restart-server" type="button" aria-pressed="false">Show</button>
+            <button id="launch-copy" class="restart-server" type="button">Copy</button>
+          </div>
+          <div class="launch-footer">
+            <span id="launch-last"></span>
+            <button id="launch-regenerate" class="settings-command" type="button">Make a new secret</button>
+          </div>
+          <div id="launch-regenerate-confirm" class="settings-restart-confirm" role="group" aria-label="Confirm new secret" hidden>
+            <p>Make a new secret? Silo's link stops signing you in until you paste the new secret into the plugin.</p>
+            <div class="restart-actions">
+              <button id="launch-regenerate-cancel" class="settings-command" type="button">Cancel</button>
+              <button id="launch-regenerate-go" class="restart-now" type="button">Make new</button>
+            </div>
+          </div>
+          <p id="launch-status" class="launch-status" role="status"></p>
+        </section>
         <div id="settings-menu" class="settings-menu" aria-label="Tab settings"></div>
         <div id="settings-editor" hidden>
           <div class="settings-editor-heading">

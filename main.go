@@ -291,6 +291,9 @@ func (a *application) routes() http.Handler {
 	mux.HandleFunc("POST /api/auth/second-factor", a.auth.secondFactorJSON)
 	mux.HandleFunc("POST /api/auth/logout", a.auth.logoutJSON)
 	mux.HandleFunc("GET /api/auth/status", a.auth.statusJSON)
+	mux.HandleFunc("POST "+launchPath, a.auth.launchJSON)
+	mux.HandleFunc("GET /api/auth/launch", a.auth.launchSettingsJSON)
+	mux.HandleFunc("POST /api/auth/launch/regenerate", a.auth.launchRegenerateJSON)
 	mux.HandleFunc("GET /api/ifd", a.ifdJSON)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")

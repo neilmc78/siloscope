@@ -20,6 +20,7 @@ const MonitorPreferences = (() => {
   const navOrder = ["system", "playing", "stats", "library", "infrastructure", "settings"];
   // [key, label, description, preview: background, surface, accent, text]
   const themes = [
+    ["silo", "Silo", "Silo's muted black", ["#141417", "#1c1c20", "#e8e8ec", "#a4a4ae"]],
     ["rose", "Rose", "The original dark theme", ["#100c0e", "#231a1e", "#ee8b9d", "#f5f0f2"]],
     ["midnight", "Midnight", "Deep navy, cool blue", ["#0b0f17", "#151c28", "#6cb6ff", "#eef2f8"]],
     ["light", "Light", "Bright surfaces for daytime", ["#f6f3f4", "#ffffff", "#c2445e", "#22171b"]],
@@ -28,6 +29,8 @@ const MonitorPreferences = (() => {
     ["matrix", "Matrix", "Falling code in the background", ["#000000", "#03200a", "#00ff41", "#c8ffd4"]],
     ["synthwave", "Synthwave", "Neon pink and cyan", ["#14081f", "#20102f", "#ff4fd8", "#2de2e6"]],
   ];
+  // New browsers match Silo; a theme someone already chose is kept.
+  const defaultTheme = "silo";
   const accents = [
     ["#ee8b9d", "Rose"], ["#ff6b6b", "Red"], ["#ff9f43", "Orange"], ["#f3bd4f", "Amber"], ["#a3e635", "Lime"],
     ["#43d3a2", "Green"], ["#2dd4bf", "Teal"], ["#22d3ee", "Cyan"], ["#60a5fa", "Blue"], ["#a78bfa", "Violet"], ["#f472b6", "Pink"],
@@ -126,7 +129,7 @@ const MonitorPreferences = (() => {
   };
 
   function normalize(raw) {
-    const result = { visibility: {}, systemOrder: [...systemOrder], navOrder: [...navOrder], navHidden: [], historyFilter: "all", chartHeight: 140, chartMinutes: 5, theme: "rose", accent: "", effects: true };
+    const result = { visibility: {}, systemOrder: [...systemOrder], navOrder: [...navOrder], navHidden: [], historyFilter: "all", chartHeight: 140, chartMinutes: 5, theme: defaultTheme, accent: "", effects: true };
     for (const [group, definition] of Object.entries(groups)) {
       for (const [key] of definition.options) {
         const fullKey = `${group}.${key}`;
@@ -190,7 +193,7 @@ const MonitorPreferences = (() => {
     try { applyTheme(load(window.localStorage)); } catch { applyTheme(normalize(null)); }
   }
 
-  return { storageKey, systemOrder, navOrder, groups, themes, accents, normalize, enabled, load, save, applyTheme, color };
+  return { storageKey, systemOrder, navOrder, groups, themes, defaultTheme, accents, normalize, enabled, load, save, applyTheme, color };
 })();
 
 if (typeof module !== "undefined" && module.exports) module.exports = MonitorPreferences;
