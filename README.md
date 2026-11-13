@@ -230,6 +230,20 @@ Siloscope asks you to sign in with a **Silo administrator** account. It sends th
 
 If an authenticating reverse proxy already guards Siloscope, set `AUTH_MODE=none` to turn sign-in off.
 
+## Open Siloscope from Silo
+
+| Admin sidebar | Plugin settings |
+| --- | --- |
+| <img src="docs/images/silo-plugin-sidebar.png" alt="Silo admin sidebar with Siloscope under Plugin Apps" width="240"> | <img src="docs/images/silo-plugin-settings.png" alt="Siloscope plugin settings in Silo with the Siloscope URL field" width="420"> |
+
+A small Silo plugin adds **Siloscope** under **Plugin Apps** in Silo's admin sidebar. It doesn't change Silo itself.
+
+1. From the [latest release](https://github.com/neilmc78/siloscope/releases/latest), download `siloscope-silo-plugin-linux-amd64` (or `-arm64`) to match the machine Silo runs on.
+2. In Silo, go to **Admin → Integrations → Plugins**, upload the file, and open **Siloscope**.
+3. Enter the address you use to open Siloscope in a browser, for example `http://192.168.1.10:8080`, and press **Save**.
+
+Only Silo administrators see the link. It opens Siloscope in the same tab, so the browser's Back button returns to Silo, and Siloscope's own sign-in still applies. Silo marks the plugin **Unverified** because it comes from an upload rather than a plugin catalog. **Check Connection** reports that it isn't supported, which is expected. The plugin's source is in [`silo-plugin/`](silo-plugin/).
+
 ## Silo API keys
 
 Siloscope uses two keys:
