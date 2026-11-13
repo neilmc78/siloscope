@@ -1,0 +1,57 @@
+{
+  "plugin_id": "siloscope.link",
+  "version": "0.1.0",
+  "checksum": "__CHECKSUM__",
+  "silo_api_version": "v1",
+  "presentation": {
+    "display_name": "Siloscope",
+    "summary": "Adds a Siloscope link to the admin sidebar.",
+    "description_markdown": "Adds **Siloscope** under **Plugin Apps** in the admin sidebar. It opens your Siloscope server, the playback history and stats monitor for Silo and Plex.",
+    "setup_markdown": "Enter the address you use to open Siloscope in a browser, for example `http://192.168.1.10:8080`, and save. **Siloscope** then appears under **Plugin Apps** in the admin sidebar.",
+    "homepage_url": "https://github.com/neilmc78/siloscope",
+    "source_url": "https://github.com/neilmc78/siloscope/tree/main/silo-plugin",
+    "support_url": "https://github.com/neilmc78/siloscope/issues"
+  },
+  "capabilities": [
+    {
+      "type": "http_routes.v1",
+      "id": "routes",
+      "display_name": "Siloscope link",
+      "description": "Opens Siloscope from the admin sidebar."
+    }
+  ],
+  "global_config_schema": [
+    {
+      "key": "siloscope",
+      "title": "Siloscope",
+      "description": "Where your Siloscope server is.",
+      "json_schema": "{\"type\":\"object\",\"properties\":{\"url\":{\"type\":\"string\"}},\"required\":[\"url\"]}",
+      "required": true,
+      "admin_form": {
+        "fields": [
+          {
+            "key": "url",
+            "label": "Siloscope URL",
+            "description": "The address you use to open Siloscope in a browser.",
+            "control": "ADMIN_FORM_CONTROL_TEXT",
+            "placeholder": "http://192.168.1.10:8080",
+            "required": true,
+            "validation": { "pattern": "^https?://\\S+$", "max_length": 2048 }
+          }
+        ],
+        "submit_label": "Save"
+      }
+    }
+  ],
+  "http_routes": [
+    {
+      "id": "open",
+      "method": "GET",
+      "path": "/",
+      "access": "admin",
+      "navigable": true,
+      "navigation_label": "Siloscope",
+      "navigation_kind": "admin"
+    }
+  ]
+}
