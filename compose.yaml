@@ -8,6 +8,9 @@ services:
       SILO_API_KEY: ${SILO_API_KEY:?Set SILO_API_KEY in .env}
       SILO_MONITOR_API_KEY: ${SILO_MONITOR_API_KEY:-}
       AUTH_MODE: ${AUTH_MODE:-silo}
+      # A proxy on the host reaches the container from Docker's gateway address.
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-127.0.0.0/8,::1/128,172.16.0.0/12}
+      SILO_LAUNCH_SECRET: ${SILO_LAUNCH_SECRET:-}
       PLEX_URL: ${PLEX_URL:-}
       PLEX_TOKEN: ${PLEX_TOKEN:-}
       IFD_URL: ${IFD_URL:-}

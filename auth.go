@@ -8,10 +8,12 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"os"
 	"strings"
@@ -46,15 +48,39 @@ type authService struct {
 	enabled  bool
 	mu       sync.Mutex
 	sessions map[string]*authSession // by token hash
-	attempts map[string][]time.Time  // sign-in attempts by client address
+	trusted  []netip.Prefix          // reverse proxies whose X-Forwarded-* headers are believed
+
+	// Sign-in budgets. byAddress bounds one client; byName bounds guesses at
+	// one account from anywhere, and stays below Silo's own per-name lock
+	// (10 in 15 minutes) so Siloscope can never be used to lock an account
+	// out of Silo.
+	byAddress *attemptLimiter
+	byName    *attemptLimiter
+
+	launch *launchService
 }
+
+// defaultTrustedProxies trusts only this machine: nginx or Tailscale serve
+// running beside Siloscope.
+const defaultTrustedProxies = "127.0.0.0/8,::1/128"
 
 func newAuthService(app *application) *authService {
 	mode := strings.ToLower(strings.TrimSpace(os.Getenv("AUTH_MODE")))
-	service := &authService{app: app, enabled: mode != "none", sessions: map[string]*authSession{}, attempts: map[string][]time.Time{}}
+	service := &authService{app: app, enabled: mode != "none", sessions: map[string]*authSession{},
+		byAddress: newAttemptLimiter(20, 10*time.Minute), byName: newAttemptLimiter(5, 15*time.Minute)}
 	if mode != "" && mode != "none" && mode != "silo" {
 		log.Fatal("AUTH_MODE must be silo or none")
 	}
+	trusted := os.Getenv("TRUSTED_PROXIES")
+	if strings.TrimSpace(trusted) == "" {
+		trusted = defaultTrustedProxies
+	}
+	prefixes, err := parsePrefixes(trusted)
+	if err != nil {
+		log.Fatalf("TRUSTED_PROXIES: %v", err)
+	}
+	service.trusted = prefixes
+	service.launch = newLaunchService(app)
 	if !service.enabled {
 		log.Print("AUTH_MODE=none: Siloscope has no sign-in; keep it behind an authenticating proxy")
 	}
@@ -155,31 +181,140 @@ func (auth *authService) start(writer http.ResponseWriter, request *http.Request
 	return nil
 }
 
-func clientAddress(request *http.Request) string {
-	host, _, err := net.SplitHostPort(request.RemoteAddr)
-	if err != nil {
-		return request.RemoteAddr
+// parsePrefixes reads a comma-separated list of CIDRs or single addresses.
+func parsePrefixes(list string) ([]netip.Prefix, error) {
+	var prefixes []netip.Prefix
+	for _, item := range strings.Split(list, ",") {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		if !strings.Contains(item, "/") {
+			address, err := netip.ParseAddr(item)
+			if err != nil {
+				return nil, fmt.Errorf("%q is not an address or CIDR", item)
+			}
+			address = address.Unmap()
+			prefixes = append(prefixes, netip.PrefixFrom(address, address.BitLen()))
+			continue
+		}
+		prefix, err := netip.ParsePrefix(item)
+		if err != nil {
+			return nil, fmt.Errorf("%q is not an address or CIDR", item)
+		}
+		prefixes = append(prefixes, prefix.Masked())
 	}
-	return host
+	return prefixes, nil
 }
 
-// allowAttempt limits sign-in attempts to 10 per 10 minutes per address.
-func (auth *authService) allowAttempt(address string) bool {
-	auth.mu.Lock()
-	defer auth.mu.Unlock()
-	cutoff := time.Now().Add(-10 * time.Minute)
-	recent := auth.attempts[address][:0]
-	for _, at := range auth.attempts[address] {
+func (auth *authService) isTrusted(address netip.Addr) bool {
+	address = address.Unmap()
+	for _, prefix := range auth.trusted {
+		if prefix.Contains(address) {
+			return true
+		}
+	}
+	return false
+}
+
+func peerAddress(request *http.Request) (netip.Addr, bool) {
+	host, _, err := net.SplitHostPort(request.RemoteAddr)
+	if err != nil {
+		host = request.RemoteAddr
+	}
+	address, err := netip.ParseAddr(host)
+	return address.Unmap(), err == nil
+}
+
+// fromTrustedProxy reports whether the request arrived through a proxy
+// listed in TRUSTED_PROXIES, so its X-Forwarded-* headers can be believed.
+func (auth *authService) fromTrustedProxy(request *http.Request) bool {
+	peer, ok := peerAddress(request)
+	return ok && auth.isTrusted(peer)
+}
+
+// clientAddress is the visitor's address. Behind a trusted proxy it walks
+// X-Forwarded-For from the right, skipping trusted hops, so a client cannot
+// pick its own address by sending the header itself.
+func (auth *authService) clientAddress(request *http.Request) string {
+	peer, ok := peerAddress(request)
+	if !ok {
+		return request.RemoteAddr
+	}
+	if !auth.isTrusted(peer) {
+		return peer.String()
+	}
+	var hops []string
+	for _, header := range request.Header.Values("X-Forwarded-For") {
+		hops = append(hops, strings.Split(header, ",")...)
+	}
+	for index := len(hops) - 1; index >= 0; index-- {
+		hop, err := netip.ParseAddr(strings.TrimSpace(hops[index]))
+		if err != nil {
+			break
+		}
+		if hop = hop.Unmap(); !auth.isTrusted(hop) {
+			return hop.String()
+		}
+	}
+	return peer.String()
+}
+
+// signInName is the per-name budget key: names match Silo accounts trimmed
+// and without regard to case, as Silo counts them.
+func signInName(name string) string {
+	return strings.ToLower(strings.TrimSpace(name))
+}
+
+const tooManyAttempts = "Too many sign-in attempts. Wait a few minutes and try again."
+
+// attemptLimiter allows max attempts per key in a sliding window.
+type attemptLimiter struct {
+	max    int
+	window time.Duration
+	mu     sync.Mutex
+	hits   map[string][]time.Time
+	swept  time.Time
+}
+
+func newAttemptLimiter(max int, window time.Duration) *attemptLimiter {
+	return &attemptLimiter{max: max, window: window, hits: map[string][]time.Time{}}
+}
+
+// allow counts one attempt for key and reports whether it is within budget.
+func (limiter *attemptLimiter) allow(key string) bool {
+	limiter.mu.Lock()
+	defer limiter.mu.Unlock()
+	now := time.Now()
+	cutoff := now.Add(-limiter.window)
+	// Drop idle keys now and then, so made-up names cannot grow the map forever.
+	if now.Sub(limiter.swept) > time.Minute {
+		for other, hits := range limiter.hits {
+			if len(hits) == 0 || !hits[len(hits)-1].After(cutoff) {
+				delete(limiter.hits, other)
+			}
+		}
+		limiter.swept = now
+	}
+	recent := limiter.hits[key][:0]
+	for _, at := range limiter.hits[key] {
 		if at.After(cutoff) {
 			recent = append(recent, at)
 		}
 	}
-	if len(recent) >= 10 {
-		auth.attempts[address] = recent
+	if len(recent) >= limiter.max {
+		limiter.hits[key] = recent
 		return false
 	}
-	auth.attempts[address] = append(recent, time.Now())
+	limiter.hits[key] = append(recent, now)
 	return true
+}
+
+// reset clears key's count after a successful sign-in.
+func (limiter *attemptLimiter) reset(key string) {
+	limiter.mu.Lock()
+	delete(limiter.hits, key)
+	limiter.mu.Unlock()
 }
 
 type siloLoginResult struct {
@@ -194,7 +329,10 @@ type siloLoginResult struct {
 
 // siloAuth posts to one of Silo's sign-in operations without any credential
 // of Siloscope's own.
-func (auth *authService) siloAuth(ctx context.Context, path string, body any) (*http.Response, []byte, error) {
+//
+// client is the visitor's address, passed on as X-Forwarded-For so Silo's
+// own per-address limits see the visitor rather than Siloscope.
+func (auth *authService) siloAuth(ctx context.Context, path string, body any, client string) (*http.Response, []byte, error) {
 	payload, err := json.Marshal(body)
 	if err != nil {
 		return nil, nil, err
@@ -207,9 +345,12 @@ func (auth *authService) siloAuth(ctx context.Context, path string, body any) (*
 	}
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Accept", "application/json")
-	client := *auth.app.client
-	client.Timeout = 15 * time.Second
-	response, err := client.Do(request)
+	if client != "" {
+		request.Header.Set("X-Forwarded-For", client)
+	}
+	httpClient := *auth.app.client
+	httpClient.Timeout = 15 * time.Second
+	response, err := httpClient.Do(request)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -256,7 +397,13 @@ func writeAuthJSON(writer http.ResponseWriter, status int, value any) {
 
 // finish turns Silo's answer to a password or second-step request into a
 // Siloscope session, a second-step prompt, or a refusal.
-func (auth *authService) finish(writer http.ResponseWriter, request *http.Request, response *http.Response, raw []byte) {
+//
+// nameKey, when set, is the per-name budget to clear once Silo accepts the
+// password: a correct password clears the count, as it does in Silo.
+func (auth *authService) finish(writer http.ResponseWriter, request *http.Request, response *http.Response, raw []byte, nameKey string) {
+	if nameKey != "" && (response.StatusCode == http.StatusOK || problemID(raw) == "second_factor_required") {
+		auth.byName.reset(nameKey)
+	}
 	switch {
 	case response.StatusCode == http.StatusOK:
 		var result siloLoginResult
@@ -287,7 +434,7 @@ func (auth *authService) finish(writer http.ResponseWriter, request *http.Reques
 		}
 		writeAuthJSON(writer, http.StatusOK, map[string]any{"second_factor": true, "challenge": response.Header.Get("Silo-Second-Factor-Challenge"), "methods": methods})
 	case response.StatusCode == http.StatusTooManyRequests:
-		writeJSONError(writer, http.StatusTooManyRequests, "Too many sign-in attempts. Wait a few minutes and try again.")
+		writeJSONError(writer, http.StatusTooManyRequests, tooManyAttempts)
 	case problemID(raw) == "second_factor_invalid":
 		writeJSONError(writer, http.StatusUnauthorized, "That code didn't work. Check it and try again.")
 	case problemID(raw) == "invalid_token":
@@ -304,8 +451,9 @@ func (auth *authService) finish(writer http.ResponseWriter, request *http.Reques
 }
 
 func (auth *authService) loginJSON(writer http.ResponseWriter, request *http.Request) {
-	if !auth.allowAttempt(clientAddress(request)) {
-		writeJSONError(writer, http.StatusTooManyRequests, "Too many sign-in attempts. Wait a few minutes and try again.")
+	client := auth.clientAddress(request)
+	if !auth.byAddress.allow(client) {
+		writeJSONError(writer, http.StatusTooManyRequests, tooManyAttempts)
 		return
 	}
 	var input struct {
@@ -316,17 +464,26 @@ func (auth *authService) loginJSON(writer http.ResponseWriter, request *http.Req
 		writeJSONError(writer, http.StatusBadRequest, "Enter your username and password.")
 		return
 	}
-	response, raw, err := auth.siloAuth(request.Context(), "/api/v2/auth/login", map[string]string{"username": strings.TrimSpace(input.Username), "password": input.Password})
+	// The name's budget is spent before Silo sees the password, so a locked
+	// name never reaches Silo and cannot add to Silo's own per-name count.
+	nameKey := signInName(input.Username)
+	if !auth.byName.allow(nameKey) {
+		writeJSONError(writer, http.StatusTooManyRequests, tooManyAttempts)
+		return
+	}
+	response, raw, err := auth.siloAuth(request.Context(), "/api/v2/auth/login", map[string]string{"username": strings.TrimSpace(input.Username), "password": input.Password}, client)
 	if err != nil {
 		writeJSONError(writer, http.StatusBadGateway, "Silo is unavailable. Try again shortly.")
 		return
 	}
-	auth.finish(writer, request, response, raw)
+	auth.finish(writer, request, response, raw, nameKey)
 }
 
 func (auth *authService) secondFactorJSON(writer http.ResponseWriter, request *http.Request) {
-	if !auth.allowAttempt(clientAddress(request)) {
-		writeJSONError(writer, http.StatusTooManyRequests, "Too many sign-in attempts. Wait a few minutes and try again.")
+	// Silo limits codes per account itself; Siloscope adds the address budget.
+	client := auth.clientAddress(request)
+	if !auth.byAddress.allow(client) {
+		writeJSONError(writer, http.StatusTooManyRequests, tooManyAttempts)
 		return
 	}
 	var input struct {
@@ -344,12 +501,12 @@ func (auth *authService) secondFactorJSON(writer http.ResponseWriter, request *h
 	} else {
 		body["recovery_code"] = strings.TrimSpace(input.RecoveryCode)
 	}
-	response, raw, err := auth.siloAuth(request.Context(), "/api/v2/auth/login/second-factor", body)
+	response, raw, err := auth.siloAuth(request.Context(), "/api/v2/auth/login/second-factor", body, client)
 	if err != nil {
 		writeJSONError(writer, http.StatusBadGateway, "Silo is unavailable. Try again shortly.")
 		return
 	}
-	auth.finish(writer, request, response, raw)
+	auth.finish(writer, request, response, raw, "")
 }
 
 func (auth *authService) logoutJSON(writer http.ResponseWriter, request *http.Request) {
@@ -383,7 +540,7 @@ func publicPath(path string) bool {
 	switch path {
 	case "/login", "/login.html", "/login.js", "/styles.css", "/preferences.js", "/site.webmanifest",
 		"/apple-touch-icon.png", "/icon-192.png", "/icon-512.png", "/icon-1024.png", "/healthz",
-		"/api/auth/login", "/api/auth/second-factor", "/api/auth/status", "/api/auth/logout":
+		"/api/auth/login", "/api/auth/second-factor", "/api/auth/status", "/api/auth/logout", launchPath:
 		return true
 	}
 	return strings.HasPrefix(path, "/icons/")
@@ -393,7 +550,9 @@ func publicPath(path string) bool {
 // requests that come from another site.
 func (auth *authService) require(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if request.Method != http.MethodGet && request.Method != http.MethodHead && !sameOrigin(request) {
+		// The Silo launch arrives from Silo's origin by design; its signed
+		// token is the protection there instead.
+		if request.Method != http.MethodGet && request.Method != http.MethodHead && request.URL.Path != launchPath && !auth.sameOrigin(request) {
 			writeJSONError(writer, http.StatusForbidden, "Cross-site request refused")
 			return
 		}
@@ -415,7 +574,8 @@ func (auth *authService) require(next http.Handler) http.Handler {
 
 // sameOrigin accepts requests without an Origin header (same-origin GETs,
 // non-browser clients) and those whose Origin host matches the request host.
-func sameOrigin(request *http.Request) bool {
+// X-Forwarded-Host counts only from a trusted proxy.
+func (auth *authService) sameOrigin(request *http.Request) bool {
 	origin := request.Header.Get("Origin")
 	if origin == "" {
 		return true
@@ -425,7 +585,7 @@ func sameOrigin(request *http.Request) bool {
 		return false
 	}
 	host := request.Host
-	if forwarded := request.Header.Get("X-Forwarded-Host"); forwarded != "" {
+	if forwarded := request.Header.Get("X-Forwarded-Host"); forwarded != "" && auth.fromTrustedProxy(request) {
 		host = strings.TrimSpace(strings.Split(forwarded, ",")[0])
 	}
 	return strings.EqualFold(parsed.Host, host)

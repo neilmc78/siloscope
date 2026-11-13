@@ -1603,6 +1603,17 @@ button.stats-top-name { cursor: pointer; text-decoration: underline; text-decora
 /* ===== Themes =====
    Each theme redefines the colour tokens above. Data-series colours stay
    inside a colourblind-checked set; themes restyle everything around them. */
+:root[data-theme="silo"] {
+  --background: #141417; --surface: #1c1c20; --surface-raised: #232328; --border: #28282e;
+  --text: #e8e8ec; --muted: #a4a4ae; --primary: #e8e8ec; --primary-soft: #2e2e35;
+  --cpu: #5f74ee; --ram: #169e88; --download: #3f97cf; --upload: #bf7f22;
+  --warning: #e0b04a; --danger: #ef4444; --success: #3fb67a; --on-primary: #141417;
+  --chrome: rgb(15 15 18 / 0.94); --hairline: rgb(255 255 255 / 0.06); --hairline-strong: rgb(255 255 255 / 0.18);
+  --track: rgb(255 255 255 / 0.07); --wash: rgb(255 255 255 / 0.02); --card-border: #28282e;
+  --crosshair: #a4a4ae; --series-1: #5f74ee; --series-2: #bf7f22; --series-3: #169e88;
+  --font: "Plus Jakarta Sans", "Avenir Next", Avenir, system-ui, sans-serif;
+}
+
 :root[data-theme="midnight"] {
   --background: #0b0f17; --surface: #151c28; --surface-raised: #1d2635; --border: #2a3547;
   --text: #eef2f8; --muted: #93a1b5; --primary: #6cb6ff; --primary-soft: #1a2a40;
@@ -1781,6 +1792,21 @@ button.stats-top-name { cursor: pointer; text-decoration: underline; text-decora
 .account-bar strong { color: var(--text); }
 
 .restart-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+
+.launch-card {
+  display: grid; gap: 12px; margin-bottom: 16px; padding: 14px 16px; border: 1px solid var(--card-border); border-radius: 14px;
+  background: var(--surface); color: var(--muted); font-size: 13px; line-height: 1.5;
+}
+.launch-card h3 { margin: 0; color: var(--text); font-size: 15px; }
+.launch-card p { margin: 0; }
+.launch-secret-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; }
+.launch-secret {
+  width: 100%; min-width: 0; min-height: 36px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--background); color: var(--text); font: 13px ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+.launch-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.launch-footer .settings-command { margin-left: 0; padding-left: 0; }
+.launch-status:empty { display: none; }
 .stats-person-header.renaming { grid-template-columns: 44px minmax(0, 1fr); align-items: start; }
 .stats-rename-form { display: grid; gap: 8px; min-width: 0; }
 .stats-rename-input {

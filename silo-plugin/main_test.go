@@ -2,8 +2,14 @@ package main
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/json"
+	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	pluginv1 "github.com/Silo-Server/silo-plugin-sdk/pkg/pluginproto/silo/plugin/v1"
 	publicmanifest "github.com/Silo-Server/silo-plugin-sdk/pkg/pluginsdk/manifest"
@@ -116,4 +122,89 @@ func TestManifestLoads(t *testing.T) {
 	if len(manifest.GetGlobalConfigSchema()) != 1 || manifest.GetGlobalConfigSchema()[0].GetKey() != configKey {
 		t.Fatalf("config schema key must be %q", configKey)
 	}
+	// The launch secret must be a secret field, so Silo never shows it back.
+	secret := false
+	for _, field := range manifest.GetGlobalConfigSchema()[0].GetAdminForm().GetFields() {
+		if field.GetKey() == secretField {
+			secret = field.GetSecret() && field.GetControl() == pluginv1.AdminFormControl_ADMIN_FORM_CONTROL_PASSWORD
+		}
+	}
+	if !secret {
+		t.Fatalf("%s must be a secret password field", secretField)
+	}
+}
+
+func TestLaunchPage(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	configureWith := func(target, secret string) *plugin {
+		p := &plugin{now: func() time.Time { return now }}
+		value, _ := structpb.NewStruct(map[string]any{urlField: target, secretField: secret})
+		if _, err := p.Configure(context.Background(), &pluginv1.ConfigureRequest{Config: []*pluginv1.ConfigEntry{{Key: configKey, Value: value}}}); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	open := func(p *plugin, headers map[string]string) (int32, string) {
+		resp, err := p.Handle(context.Background(), &pluginv1.HandleHTTPRequest{Method: "GET", Path: "/", Headers: headers})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return resp.GetStatusCode(), string(resp.GetBody())
+	}
+	admin := map[string]string{"X-Silo-User-Id": "7", "X-Silo-User-Role": "admin", "X-Silo-User-Name": "neil"}
+	tokenPattern := regexp.MustCompile(`name="token" value="([^"]+)"`)
+
+	t.Run("admin gets a signed one-minute token", func(t *testing.T) {
+		status, body := open(configureWith("https://scope.example:8443/", "shared"), admin)
+		if status != 200 || !strings.Contains(body, `action="https://scope.example:8443/api/auth/silo-launch"`) {
+			t.Fatalf("status %d body:\n%s", status, body)
+		}
+		if strings.Contains(body, "http-equiv") || strings.Contains(body, "location.replace") {
+			t.Fatalf("launch page also forwards without the token:\n%s", body)
+		}
+		match := tokenPattern.FindStringSubmatch(body)
+		if match == nil {
+			t.Fatalf("no token in page:\n%s", body)
+		}
+		payload, signature, _ := strings.Cut(match[1], ".")
+		mac := hmac.New(sha256.New, []byte("shared"))
+		mac.Write([]byte(launchContext + payload))
+		if got, _ := base64.RawURLEncoding.DecodeString(signature); !hmac.Equal(got, mac.Sum(nil)) {
+			t.Fatal("token signature does not verify with the shared secret")
+		}
+		raw, _ := base64.RawURLEncoding.DecodeString(payload)
+		var claims launchClaims
+		if err := json.Unmarshal(raw, &claims); err != nil || claims.Version != 1 || claims.UserID != "7" || claims.Expires-claims.Issued != 60 || len(claims.Nonce) < 16 {
+			t.Fatalf("claims = %+v (%v)", claims, err)
+		}
+		// Each opening gets its own nonce, so a token is good once.
+		_, again := open(configureWith("https://scope.example:8443/", "shared"), admin)
+		if tokenPattern.FindStringSubmatch(again)[1] == match[1] {
+			t.Fatal("two launches produced the same token")
+		}
+	})
+	t.Run("a Siloscope under a path keeps it", func(t *testing.T) {
+		_, body := open(configureWith("https://host.example/scope", "shared"), admin)
+		if !strings.Contains(body, `action="https://host.example/scope/api/auth/silo-launch"`) {
+			t.Fatalf("body:\n%s", body)
+		}
+	})
+	t.Run("no token without Silo's admin role", func(t *testing.T) {
+		for _, headers := range []map[string]string{
+			{"X-Silo-User-Id": "7", "X-Silo-User-Role": "user"},
+			{"X-Silo-User-Role": "admin"},
+			nil,
+		} {
+			status, body := open(configureWith("https://scope.example/", "shared"), headers)
+			if status != 403 || strings.Contains(body, "token") || strings.Contains(body, "scope.example") {
+				t.Fatalf("headers %v: status %d body:\n%s", headers, status, body)
+			}
+		}
+	})
+	t.Run("without a secret the link only forwards", func(t *testing.T) {
+		_, body := open(configureWith("https://scope.example/", ""), admin)
+		if strings.Contains(body, "silo-launch") || !strings.Contains(body, `location.replace("https://scope.example/")`) {
+			t.Fatalf("body:\n%s", body)
+		}
+	})
 }
