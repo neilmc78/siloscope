@@ -28,7 +28,7 @@
       ["Page Indicators", ["heading", "count", "badge"]],
       ["Session Appearance", ["cards", "posters", "title"]],
       ["Media Details", ["subtitle", "resolution", "tonemap", "audio", "bitrate"]],
-      ["Playback Details", ["source", "method", "client", "node", "profile", "progress", "user", "time"]],
+      ["Playback Details", ["source", "method", "client", "node", "profile", "progress", "user", "time", "ends"]],
     ],
     infrastructure: [
       ["Page Indicators", ["heading", "summary", "badge"]],
@@ -82,6 +82,7 @@
     if (active?.hidden) tabs.querySelector(".tab-button:not([hidden])")?.click();
     model.applyTheme(preferences);
     document.documentElement.style.setProperty("--chart-height", `${preferences.chartHeight}px`);
+    document.documentElement.style.setProperty("--session-text-scale", String(preferences.cardTextScale / 100));
     window.dispatchEvent(new CustomEvent("monitor-settings-change", { detail: { chartMinutes: preferences.chartMinutes, historyFilter: preferences.historyFilter } }));
   }
 
@@ -208,6 +209,27 @@
       durationLabel.append(make("span", "", "Time window"), duration);
       graphs.append(durationLabel);
       options.append(graphs);
+    }
+    if (activeGroup === "playing") {
+      const text = makeSection("Text Size");
+      const sizeLabel = make("label", "settings-height");
+      const size = make("input", "");
+      size.type = "range";
+      size.min = String(model.cardTextScale.min);
+      size.max = String(model.cardTextScale.max);
+      size.step = String(model.cardTextScale.step);
+      size.value = preferences.cardTextScale;
+      size.dataset.order = "card-text-scale";
+      size.setAttribute("aria-label", "Session card text size");
+      const output = make("output", "", `${preferences.cardTextScale}%`);
+      size.addEventListener("input", () => {
+        preferences.cardTextScale = Number(size.value);
+        output.textContent = `${size.value}%`;
+        commit();
+      });
+      sizeLabel.append(make("span", "", "Card text"), output, size);
+      text.append(sizeLabel, make("p", "settings-note", "Scales the text on each session card. Text also adapts to the card width and your browser's text size. On narrow screens the user, start and end times stop growing once they fill their row."));
+      options.append(text);
     }
     for (const [title, keys] of sections[activeGroup]) {
       const fields = makeSection(title);
@@ -384,6 +406,7 @@
       preferences.chartHeight = 140;
       preferences.chartMinutes = 5;
     }
+    if (activeGroup === "playing") preferences.cardTextScale = model.cardTextScale.default;
     commit();
     renderOptions();
   });

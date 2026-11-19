@@ -987,12 +987,25 @@ function createSessionCard(session) {
 
   const username = session.username || `User ${session.user_id || ""}`.trim();
   const footer = elementWithClass("div", "session-footer");
+  // Start time (or Plex state) and the estimated end time stack on the right,
+  // centred as one block against the avatar and username.
+  const when = elementWithClass("div", "session-when");
+  when.append(elementWithClass("span", "session-time", session.source === "plex"
+    ? humanize(session.playback_state || (session.is_paused ? "paused" : "playing"))
+    : `Started ${relativeTime(session.started_at)}`));
+  const ends = PlaybackTime.endTime(session);
+  if (ends) {
+    const endsLabel = document.createElement("time");
+    endsLabel.className = "session-ends";
+    endsLabel.dateTime = ends.toISOString();
+    endsLabel.textContent = `Ends ${PlaybackTime.formatClock(ends)}`;
+    endsLabel.title = `Estimated finish: ${ends.toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}`;
+    when.append(endsLabel);
+  }
   footer.append(
     elementWithClass("span", "avatar", username.charAt(0).toUpperCase() || "?"),
     elementWithClass("span", "session-user", username),
-    elementWithClass("span", "session-time", session.source === "plex"
-      ? humanize(session.playback_state || (session.is_paused ? "paused" : "playing"))
-      : `Started ${relativeTime(session.started_at)}`),
+    when,
   );
   copy.append(footer);
   card.append(poster, copy);
