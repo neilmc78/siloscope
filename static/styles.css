@@ -1137,6 +1137,7 @@ h2 {
 }
 
 .session-selectable {
+  container-type: inline-size;
   display: grid;
   grid-template-columns: 0px minmax(0, 1fr);
   min-width: 0;
@@ -1237,6 +1238,11 @@ h2 {
   .session-selectable { transition: none; }
 }
 
+/*
+ * Now Playing card text is multiplied by --session-text-scale, from
+ * Settings > Playing > Text Size. At 1 (100%, the default) every size is the
+ * original one; the poster and spacing do not change.
+ */
 .session-card {
   position: relative;
   isolation: isolate;
@@ -1340,14 +1346,14 @@ h2 {
 }
 
 .session-title {
-  font-size: 14px;
+  font-size: calc(14px * var(--session-text-scale, 1));
   font-weight: 800;
 }
 
 .session-subtitle {
-  margin-top: 3px;
+  margin-top: calc(3px * var(--session-text-scale, 1));
   color: var(--muted);
-  font-size: 11px;
+  font-size: calc(11px * var(--session-text-scale, 1));
 }
 
 .session-tags {
@@ -1355,6 +1361,13 @@ h2 {
   flex-wrap: wrap;
   gap: 5px;
   margin-top: 10px;
+}
+
+/* In ems of the 9px tag text, so 100% matches .tag exactly. */
+.session-tags .tag {
+  max-width: 16.111em;
+  padding: 0.333em 0.667em;
+  font-size: calc(9px * var(--session-text-scale, 1));
 }
 
 .tag {
@@ -1379,8 +1392,8 @@ h2 {
 
 .silo-session-tags { align-items: center; }
 .silo-session-tags .tag {
-  line-height: 14px;
-  padding-block: 4px 2px;
+  line-height: 1.556;
+  padding-block: 0.444em 0.222em;
 }
 .tag-jellyfin {
   color: #b568cc;
@@ -1401,12 +1414,17 @@ h2 {
 
 .session-footer {
   display: flex;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 7px;
   margin-top: auto;
   padding-top: 10px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: calc(10px * var(--session-text-scale, 1));
+  /* Capped by the text column's width (card less poster and padding, 115px)
+     so the avatar, some of the username and the start/end block always fit
+     on one row, however large the text is set. */
+  font-size: min(calc(10px * var(--session-text-scale, 1)), calc((100cqi - 115px) / 16));
 }
 
 .avatar {
@@ -1422,7 +1440,17 @@ h2 {
   font-weight: 900;
 }
 
+/* 22px circle with 9px text at 100%, scaling with the footer. */
+.session-footer .avatar {
+  width: 2.444em;
+  height: 2.444em;
+  font-size: 0.9em;
+  line-height: 1;
+}
+
 .session-user {
+  flex: 1 1 0;
+  min-width: 0;
   overflow: hidden;
   color: var(--text);
   font-weight: 700;
@@ -1430,9 +1458,27 @@ h2 {
   white-space: nowrap;
 }
 
-.session-time {
+/* Start time and estimated end time: a right-aligned two-line block that the
+   footer centres vertically against the avatar and username. It never wraps:
+   the footer's font size is capped by the card width (see .session-footer). */
+.session-when {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.15em;
   margin-left: auto;
+  line-height: 1.25;
+  text-align: right;
+}
+
+.session-time,
+.session-ends {
   white-space: nowrap;
+}
+
+.session-ends {
+  font-variant-numeric: tabular-nums;
 }
 
 .progress-track {

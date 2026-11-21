@@ -571,6 +571,9 @@ func (a *application) fetch(ctx context.Context, cacheKey, upstreamPath string, 
 	if upstreamPath == "/api/v2/admin/sessions" || upstreamPath == "/api/v2/admin/nodes" {
 		body, err = a.fetchCollection(ctx, upstreamURL)
 		contentType = "application/json"
+		if err == nil && upstreamPath == "/api/v2/admin/sessions" {
+			body, err = normalizeSiloSessions(body)
+		}
 	} else {
 		body, contentType, err = a.fetchResponse(ctx, upstreamURL)
 	}

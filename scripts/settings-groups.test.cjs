@@ -5,7 +5,7 @@ const transcoderFields = require('../static/transcoder-fields.json');
 const baseURL = process.env.NOTIFICATION_PREVIEW_URL || 'http://127.0.0.1:18198';
 const headings = {
   system: ['Layout', 'Graph Settings', 'Page Indicators', 'Disk Usage', 'CPU', 'Bandwidth', 'InfiniDysk', 'Memory'],
-  playing: ['Page Indicators', 'Session Appearance', 'Media Details', 'Playback Details'],
+  playing: ['Text Size', 'Page Indicators', 'Session Appearance', 'Media Details', 'Playback Details'],
   infrastructure: ['Page Indicators', 'Node Identity', 'Health & Activity', 'Resources'],
 };
 

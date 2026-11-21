@@ -31,6 +31,8 @@ const MonitorPreferences = (() => {
   ];
   // New browsers match Silo; a theme someone already chose is kept.
   const defaultTheme = "silo";
+  // Now Playing card text size, as a percentage of the original card text.
+  const cardTextScale = { min: 90, max: 150, step: 5, default: 100 };
   const accents = [
     ["#ee8b9d", "Rose"], ["#ff6b6b", "Red"], ["#ff9f43", "Orange"], ["#f3bd4f", "Amber"], ["#a3e635", "Lime"],
     ["#43d3a2", "Green"], ["#2dd4bf", "Teal"], ["#22d3ee", "Cyan"], ["#60a5fa", "Blue"], ["#a78bfa", "Violet"], ["#f472b6", "Pink"],
@@ -104,6 +106,7 @@ const MonitorPreferences = (() => {
         ["node", "Playback node", ".session-node", "cards"],
         ["profile", "Profile", ".session-profile", "cards"],
         ["progress", "Playback progress", ".session-card .progress-track", "cards"],
+        ["ends", "Estimated end time", ".session-ends", "cards"],
         ["user", "User", ".session-footer .avatar, .session-user", "cards"],
         ["time", "Start time / playback state", ".session-time", "cards"],
       ],
@@ -129,7 +132,7 @@ const MonitorPreferences = (() => {
   };
 
   function normalize(raw) {
-    const result = { visibility: {}, systemOrder: [...systemOrder], navOrder: [...navOrder], navHidden: [], historyFilter: "all", chartHeight: 140, chartMinutes: 5, theme: defaultTheme, accent: "", effects: true };
+    const result = { visibility: {}, systemOrder: [...systemOrder], navOrder: [...navOrder], navHidden: [], historyFilter: "all", chartHeight: 140, chartMinutes: 5, theme: defaultTheme, accent: "", effects: true, cardTextScale: cardTextScale.default };
     for (const [group, definition] of Object.entries(groups)) {
       for (const [key] of definition.options) {
         const fullKey = `${group}.${key}`;
@@ -148,6 +151,10 @@ const MonitorPreferences = (() => {
     if (["all", "silo", "plex"].includes(raw?.historyFilter)) result.historyFilter = raw.historyFilter;
     if (Number.isFinite(raw?.chartHeight)) result.chartHeight = Math.min(220, Math.max(100, raw.chartHeight));
     if ([2, 3, 4, 5].includes(raw?.chartMinutes)) result.chartMinutes = raw.chartMinutes;
+    if (Number.isFinite(raw?.cardTextScale)) {
+      const stepped = Math.round(raw.cardTextScale / cardTextScale.step) * cardTextScale.step;
+      result.cardTextScale = Math.min(cardTextScale.max, Math.max(cardTextScale.min, stepped));
+    }
     return result;
   }
 
@@ -193,7 +200,7 @@ const MonitorPreferences = (() => {
     try { applyTheme(load(window.localStorage)); } catch { applyTheme(normalize(null)); }
   }
 
-  return { storageKey, systemOrder, navOrder, groups, themes, defaultTheme, accents, normalize, enabled, load, save, applyTheme, color };
+  return { storageKey, systemOrder, navOrder, groups, themes, defaultTheme, accents, cardTextScale, normalize, enabled, load, save, applyTheme, color };
 })();
 
 if (typeof module !== "undefined" && module.exports) module.exports = MonitorPreferences;
