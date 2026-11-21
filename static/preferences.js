@@ -31,8 +31,8 @@ const MonitorPreferences = (() => {
   ];
   // New browsers match Silo; a theme someone already chose is kept.
   const defaultTheme = "silo";
-  // Now Playing card text size, as a percentage of the adaptive default.
-  const cardTextScale = { min: 80, max: 150, step: 5, default: 100 };
+  // Now Playing card text size, as a percentage of the original card text.
+  const cardTextScale = { min: 90, max: 150, step: 5, default: 100 };
   const accents = [
     ["#ee8b9d", "Rose"], ["#ff6b6b", "Red"], ["#ff9f43", "Orange"], ["#f3bd4f", "Amber"], ["#a3e635", "Lime"],
     ["#43d3a2", "Green"], ["#2dd4bf", "Teal"], ["#22d3ee", "Cyan"], ["#60a5fa", "Blue"], ["#a78bfa", "Violet"], ["#f472b6", "Pink"],

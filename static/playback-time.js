@@ -19,14 +19,15 @@ const PlaybackTime = (() => {
     return new Date(now + remaining * 1000);
   }
 
-  function formatClock(date) {
-    const pad = (value) => String(value).padStart(2, "0");
-    return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  // The viewer's own clock style: "6:22 PM" where the device uses a 12-hour
+  // clock, "18:22" where it uses 24-hour time. locales is for tests.
+  function formatClock(date, locales = undefined) {
+    return date.toLocaleTimeString(locales, { timeStyle: "short" });
   }
 
-  function endsLabel(session, now = Date.now()) {
+  function endsLabel(session, now = Date.now(), locales = undefined) {
     const end = endTime(session, now);
-    return end ? `Ends ${formatClock(end)}` : "";
+    return end ? `Ends ${formatClock(end, locales)}` : "";
   }
 
   return { remainingSeconds, endTime, formatClock, endsLabel };

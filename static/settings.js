@@ -228,7 +228,7 @@
         commit();
       });
       sizeLabel.append(make("span", "", "Card text"), output, size);
-      text.append(sizeLabel, make("p", "settings-note", "Scales the text on each session card. Text also adapts to the card width and your browser's text size. On narrow screens the user, start and end times stop growing once they fill their row."));
+      text.append(sizeLabel, make("p", "settings-note", "Scales the text on each session card; 100% is the standard size. On narrow screens the user, start and end times stop growing once they fill their row."));
       options.append(text);
     }
     for (const [title, keys] of sections[activeGroup]) {

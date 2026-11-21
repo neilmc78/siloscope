@@ -5,6 +5,7 @@ process.env.TZ = process.env.TZ || "UTC";
 const { chromium } = require("playwright");
 const assert = require("node:assert/strict");
 const preferences = require("../static/preferences.js");
+const PlaybackTime = require("../static/playback-time.js");
 const baseURL = process.env.NOTIFICATION_PREVIEW_URL || "http://127.0.0.1:18198";
 const shots = process.env.SCREENSHOT_DIR || "/tmp";
 
@@ -18,10 +19,8 @@ const plex = [
   { session_key: "c", username: "Priya", series_name: "Night Shift", media_title: "Graveyard Rounds", episode_name: "Graveyard Rounds", season_number: 1, episode_number: 7, play_method: "directplay", source_video_resolution: "1080p", source_audio_codec: "eac3", source_bitrate_kbps: 8400, client_label: "Bedroom Shield", file_duration: 2700, position_seconds: 900, playback_state: "playing" },
   { session_key: "d", username: "Casey", media_title: "Copper Valley", media_type: "movie", play_method: "transcode", target_resolution: "720p", source_audio_codec: "aac", source_bitrate_kbps: 6000, client_label: "Kitchen Roku", file_duration: 7200, position_seconds: 2000, playback_state: "playing" },
 ];
-const clock = seconds => {
-  const date = new Date(now + seconds * 1000);
-  return `Ends ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
-};
+// The page runs with the same time zone and locale, so it must show this.
+const clock = (seconds, locale = "en-US") => `Ends ${PlaybackTime.formatClock(new Date(now + seconds * 1000), locale)}`;
 
 async function cardMetrics(page) {
   return page.locator(".session-card").evaluateAll(cards => cards.map(card => {
@@ -52,7 +51,7 @@ async function cardMetrics(page) {
   const browser = await chromium.launch();
   try {
     for (const width of [320, 390, 1280]) {
-      const page = await browser.newPage({ viewport: { width, height: width === 1280 ? 900 : 844 }, deviceScaleFactor: 2 });
+      const page = await browser.newPage({ viewport: { width, height: width === 1280 ? 900 : 844 }, deviceScaleFactor: 2, locale: "en-US", timezoneId: process.env.TZ });
       const errors = [];
       page.on("pageerror", error => errors.push(error.message));
       await page.route("**/api/**", route => {
@@ -61,6 +60,8 @@ async function cardMetrics(page) {
         if (url.includes("/api/sessions")) return route.fulfill({ json: silo });
         return route.fulfill({ json: [] });
       });
+      // Freeze the page's clock at the test's "now" so a minute can't tick over between them.
+      await page.clock.setFixedTime(now);
       await page.goto(baseURL);
       await page.locator('[data-tab="playing"]').click();
       await page.locator(".session-card").nth(3).waitFor();
@@ -75,6 +76,11 @@ async function cardMetrics(page) {
           assert.equal(card.endsBelowTime, true, `${card.title}: ends sits under start time`);
           assert.equal(card.rightAligned, true, `${card.title}: ends right-aligned with start time`);
         }
+      }
+      // 100% is the original card text, even on the narrowest phone.
+      for (const card of base) {
+        assert.equal(card.titleSize, 14, `${card.title}: title is the original 14px at 100%`);
+        assert.equal(card.footerSize, 10, `${card.title}: footer is the original 10px at 100%`);
       }
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "no horizontal scroll");
       await page.locator(".page-shell").evaluate(element => { element.scrollTop = 0; });
@@ -103,9 +109,10 @@ async function cardMetrics(page) {
       await slider.press("Home");
       await page.locator('[data-tab="playing"]').click();
       const small = await cardMetrics(page);
-      assert.ok(small[0].footerSize < base[0].footerSize, "footer text shrinks at 80%");
-      assert.ok(Math.abs(small[0].titleSize / base[0].titleSize - 0.8) < 0.02, "title text scales to 80%");
-      await page.screenshot({ path: `${shots}/ends-${width}-80.png` });
+      assert.ok(small[0].footerSize < base[0].footerSize, "footer text shrinks at the minimum");
+      assert.ok(Math.abs(small[0].titleSize / base[0].titleSize - preferences.cardTextScale.min / 100) < 0.02, "title text scales to the minimum");
+      for (const card of small) assert.ok(!card.wrapped, `${card.title}: no wrap at the minimum`);
+      await page.screenshot({ path: `${shots}/ends-${width}-${preferences.cardTextScale.min}.png` });
 
       // The Estimated end time toggle hides the line; the start time stays.
       await page.locator('[data-tab="settings"]').click();
@@ -126,6 +133,22 @@ async function cardMetrics(page) {
       assert.deepEqual(errors, []);
       await page.close();
     }
+
+    // A device that uses a 24-hour clock gets one.
+    const british = await browser.newPage({ viewport: { width: 390, height: 844 }, locale: "en-GB", timezoneId: process.env.TZ });
+    await british.route("**/api/**", route => {
+      const url = route.request().url();
+      if (url.includes("/api/plex/sessions")) return route.fulfill({ json: { enabled: true, sessions: plex } });
+      if (url.includes("/api/sessions")) return route.fulfill({ json: silo });
+      return route.fulfill({ json: [] });
+    });
+    // Freeze the page's clock at the test's "now" so a minute can't tick over between them.
+    await british.clock.setFixedTime(now);
+    await british.goto(baseURL);
+    await british.locator('[data-tab="playing"]').click();
+    await british.locator(".session-card").nth(3).waitFor();
+    assert.deepEqual((await cardMetrics(british)).map(card => card.ends), [clock(1200, "en-GB"), "", clock(1800, "en-GB"), clock(5200, "en-GB")], "24-hour end times");
+    await british.close();
     console.log("chromium: end time placement, alignment, text size, toggle and reset passed");
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exit(1); });
