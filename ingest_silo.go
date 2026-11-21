@@ -47,7 +47,8 @@ type siloSessionRow struct {
 	MediaFileID        string   `json:"media_file_id"`
 	MediaTitle         string   `json:"media_title"`
 	MediaType          string   `json:"media_type"`
-	SeriesName         string   `json:"series_name"`
+	SeriesName         string   `json:"series_name"`  // older Silo
+	SeriesTitle        string   `json:"series_title"` // newer Silo
 	SeasonNumber       *int     `json:"season_number"`
 	EpisodeNumber      *int     `json:"episode_number"`
 	EpisodeName        string   `json:"episode_name"`
@@ -427,9 +428,9 @@ func (ingest *siloIngester) recordSession(ctx context.Context, row siloSessionRo
 	fields.set("item_id", row.ContentID)
 	fields.set("media_file_id", row.MediaFileID)
 	fields.set("media_type", row.MediaType)
-	if row.SeriesName != "" {
-		fields.set("title", row.SeriesName)
-		fields.set("series_title", row.SeriesName)
+	if series := firstNonEmpty(row.SeriesName, row.SeriesTitle); series != "" {
+		fields.set("title", series)
+		fields.set("series_title", series)
 		fields.set("episode_title", firstNonEmpty(row.EpisodeName, row.MediaTitle))
 	} else {
 		fields.set("title", row.MediaTitle)
@@ -491,7 +492,7 @@ func (ingest *siloIngester) recordSession(ctx context.Context, row siloSessionRo
 		// Silo history, which carries no artwork, share this poster.
 		_, _ = ingest.store.db.ExecContext(ctx, `UPDATE plays SET poster_url = ?
 			WHERE source = 'silo' AND poster_url IS NULL
-			  AND (item_id = ? OR (? <> '' AND series_title = ?))`, posterURL, row.ContentID, row.SeriesName, row.SeriesName)
+			  AND (item_id = ? OR (? <> '' AND series_title = ?))`, posterURL, row.ContentID, firstNonEmpty(row.SeriesName, row.SeriesTitle), firstNonEmpty(row.SeriesName, row.SeriesTitle))
 	}
 	return id, state, err
 }
