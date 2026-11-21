@@ -46,6 +46,14 @@ jobs:
       - name: Test and build the Silo plugin
         working-directory: silo-plugin
         run: |
+          # The plugin reports the release's version in Silo, whether or not
+          # its code changed. The manifest is embedded at build time.
+          version="${TAG#v}"
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Tag $TAG is not vX.Y.Z, so the plugin can't be versioned from it"
+            exit 1
+          fi
+          jq --arg v "$version" '.version = $v' manifest.json > manifest.tmp && mv manifest.tmp manifest.json
           go test ./...
           for arch in amd64 arm64; do
             CGO_ENABLED=0 GOOS=linux GOARCH=$arch go build -trimpath -ldflags="-s -w" -o "../dist/siloscope-silo-plugin-linux-$arch" .

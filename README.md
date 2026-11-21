@@ -248,6 +248,8 @@ A small Silo plugin adds **Siloscope** under **Plugin Apps** in Silo's admin sid
 
 **How the one-click sign-in works.** Silo tells the plugin who opened the link. Silo strips any such header a browser sends, and sets the administrator role only for an acting admin. The plugin signs a one-minute, single-use token with the shared secret, and your browser posts it to Siloscope. Siloscope checks the signature, the expiry and that the token hasn't been used, then asks Silo with its API key that the account is still an enabled administrator before opening a session. No password is involved. The secret is kept in Siloscope's database, or set it with `SILO_LAUNCH_SECRET`. **Make a new secret** stops the old one working at once. If the secrets don't match, Siloscope shows its sign-in page and says so.
 
+The plugin's version in Silo matches the Siloscope release it came from. Upload a new one only when the release notes say the plugin changed.
+
 Only Silo administrators see the link. It opens in the same tab, so Back returns to Silo. Silo marks the plugin **Unverified** because it comes from an upload rather than a plugin catalog. **Check Connection** says it isn't supported: Silo only runs connection checks for metadata and marker plugins (see [docs/upstream/silo-notes.md](docs/upstream/silo-notes.md)). The plugin's source is in [`silo-plugin/`](silo-plugin/).
 
 ## Silo API keys
@@ -296,7 +298,13 @@ Without the monitoring key, live Silo plays are picked up by a 15-second poll in
 | `PUSH_DATA_DIR` | `/data/push` in Compose | Persistent notification data; required when push is enabled |
 | `ACTIVITY_DATA_DIR` | `/data/activity` in Docker/Compose | Playback history database (`siloscope.db`); set explicitly for standalone binaries |
 
-The image is published for AMD64 and ARM64 at `ghcr.io/neilmc78/silo-monitor:latest`; release binaries are attached to each `v*` tag.
+The image is published for AMD64 and ARM64 at `ghcr.io/neilmc78/silo-monitor`. Release binaries and the Silo plugin are attached to each `v*` tag.
+
+| Image tag | What it is |
+| --- | --- |
+| `latest` | The newest release. It moves only when a release is tagged. |
+| `0.3`, `0.3.0`, … | A release line (patch updates only) or one exact release |
+| `main` | Every merge, before it's released. For testing. |
 
 ## How it works
 
