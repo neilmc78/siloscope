@@ -48,13 +48,7 @@ const MonitorStats = (() => {
   }
 
   function relative(ms) {
-    if (!ms) return "Never";
-    const seconds = Math.max(0, (Date.now() - ms) / 1000);
-    if (seconds < 60) return "Just now";
-    if (seconds < 3600) return `${Math.floor(seconds / 60)} min ago`;
-    if (seconds < 86400) return `${Math.floor(seconds / 3600)} h ago`;
-    const days = Math.floor(seconds / 86400);
-    return days === 1 ? "1 day ago" : `${days} days ago`;
+    return ms ? TimeAgo.format(ms) : "Never";
   }
 
   function bucketLabel(iso, bucket, long = false) {

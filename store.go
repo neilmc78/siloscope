@@ -208,6 +208,8 @@ CREATE TABLE ingest_state (
 		expires      INTEGER NOT NULL,
 		last_seen    INTEGER NOT NULL
 	);`,
+	// 4: History lists plays by when they ended, or were last seen while active.
+	`CREATE INDEX plays_last_activity ON plays(COALESCE(ended_at, updated_at));`,
 }
 
 // playColumns lists every plays column an ingester may set. upsertPlay only
