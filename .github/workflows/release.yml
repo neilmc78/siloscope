@@ -1,0 +1,88 @@
+name: Release
+
+# Every merge to main is released: the next patch version by default, or the
+# next minor or major one when the pull request's title says [minor] or
+# [major]. The release, its binaries and Silo plugin, and the :latest image
+# all carry that version. Merges that only touch docs, tests or workflows
+# make no release; run this workflow by hand to release them anyway.
+#
+# A tag pushed with the workflow's own token does not trigger other
+# workflows, so this calls the binary and image builds itself.
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "scripts/**"
+      - ".github/**"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+# Two quick merges are released one after the other, never with one version.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          versions=$(scripts/next-version.sh)
+          if [ -z "$versions" ]; then
+            echo "This commit is already released."
+            exit 0
+          fi
+          next=${versions%% *}
+          previous=${versions#* }
+
+          # The pull request's title: the third line of a merge commit,
+          # otherwise the commit's first line.
+          title=$(git log -1 --format=%B | awk 'NR == 1 && /^Merge pull request/ { merge = 1; next } merge && NF { print; exit } !merge { print; exit }')
+          title=$(printf '%s' "$title" | sed -E 's/\[(minor|major)\][[:space:]]*//g')
+
+          if [ -n "$previous" ] && git diff --quiet "$previous" HEAD -- silo-plugin; then
+            plugin="**Silo plugin:** unchanged since $previous, so there's no need to re-upload it."
+          else
+            plugin="**Silo plugin:** updated in this release. Re-upload it in Silo under Admin → Integrations → Plugins."
+          fi
+          printf '%s\n\n**Docker:** `ghcr.io/%s/silo-monitor:latest`\n' "$plugin" "${GITHUB_REPOSITORY_OWNER}" > notes.md
+
+          git tag "$next"
+          git push origin "$next"
+          gh release create "$next" --title "$next — $title" --notes-file notes.md --generate-notes
+          echo "tag=$next" >> "$GITHUB_OUTPUT"
+
+  binaries:
+    needs: tag
+    if: needs.tag.outputs.tag != ''
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release-binaries.yml
+    with:
+      tag: ${{ needs.tag.outputs.tag }}
+
+  container:
+    needs: tag
+    if: needs.tag.outputs.tag != ''
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/publish-container.yml
+    with:
+      tag: ${{ needs.tag.outputs.tag }}

@@ -298,13 +298,12 @@ Without the monitoring key, live Silo plays are picked up by a 15-second poll in
 | `PUSH_DATA_DIR` | `/data/push` in Compose | Persistent notification data; required when push is enabled |
 | `ACTIVITY_DATA_DIR` | `/data/activity` in Docker/Compose | Playback history database (`siloscope.db`); set explicitly for standalone binaries |
 
-The image is published for AMD64 and ARM64 at `ghcr.io/neilmc78/silo-monitor`. Release binaries and the Silo plugin are attached to each `v*` tag.
+The image is published for AMD64 and ARM64 at `ghcr.io/neilmc78/silo-monitor`. Every merge to `main` is released automatically as the next patch version, with release binaries and the Silo plugin attached; its release notes say whether the plugin changed. A pull request titled with `[minor]` or `[major]` bumps that part of the version instead. Changes to docs, tests or workflows alone make no release.
 
 | Image tag | What it is |
 | --- | --- |
-| `latest` | The newest release. It moves only when a release is tagged. |
-| `0.3`, `0.3.0`, … | A release line (patch updates only) or one exact release |
-| `main` | Every merge, before it's released. For testing. |
+| `latest` | The newest release |
+| `0.3`, `0.3.2`, … | A release line (patch updates only) or one exact release |
 
 ## How it works
 
