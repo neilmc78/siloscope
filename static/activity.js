@@ -63,9 +63,8 @@ const PlaybackActivity = (() => {
       const episode = [entry.season_number != null ? `S${entry.season_number}` : "", entry.episode_number != null ? `E${entry.episode_number}` : ""].filter(Boolean).join(" · ");
       const subtitle = [episode, entry.episode_name].filter(Boolean).join(" — ");
       if (subtitle) copy.append(element("span", "activity-subtitle", subtitle));
-      const seconds = Math.max(0, Math.floor((Date.now() - Date.parse(entry.ended_at || entry.last_seen)) / 1000));
-      const ago = seconds < 60 ? "Just now" : seconds < 3600 ? `${Math.floor(seconds / 60)} min ago` : `${Math.floor(seconds / 3600)} hours ago`;
-      const label = entry.status === "active" ? "Active" : ago;
+      // The server sorts by this same time: when the play ended, or was last seen.
+      const label = entry.status === "active" ? "Active" : TimeAgo.format(Date.parse(entry.ended_at || entry.last_seen));
       copy.append(element("span", "activity-user", [entry.source, entry.user, label].filter(Boolean).join(" — ")));
       heading.append(poster, copy);
       const span = value => {

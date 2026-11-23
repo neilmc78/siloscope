@@ -105,7 +105,8 @@ type playbackActivity struct {
 
 var activityMethods = map[string]string{"direct_play": "Direct play", "direct_stream": "Direct stream", "transcode": "Transcoding"}
 
-// activityJSON serves GET /api/activity?limit=N&before=<unix ms>.
+// activityJSON serves GET /api/activity?limit=N&before=<unix ms>, newest
+// activity first: when each play ended, or was last seen while active.
 func (app *application) activityJSON(writer http.ResponseWriter, request *http.Request) {
 	writer.Header().Set("Cache-Control", "no-store")
 	writer.Header().Set("Content-Type", "application/json")
@@ -131,8 +132,8 @@ func (app *application) activityJSON(writer http.ResponseWriter, request *http.R
 		FROM plays p
 		LEFT JOIN accounts a ON a.id = p.account_id
 		LEFT JOIN people pe ON pe.id = a.person_id
-		WHERE p.started_at < ?
-		ORDER BY p.started_at DESC LIMIT ?`, before, limit)
+		WHERE COALESCE(p.ended_at, p.updated_at) < ?
+		ORDER BY COALESCE(p.ended_at, p.updated_at) DESC LIMIT ?`, before, limit)
 	if err != nil {
 		writeJSONError(writer, http.StatusInternalServerError, "History could not be read")
 		return
