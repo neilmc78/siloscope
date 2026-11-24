@@ -83,6 +83,15 @@ const PlaybackActivity = (() => {
       if (client) details.append(element("div", "activity-detail", client));
       if (entry.person && entry.person !== entry.user) details.append(element("div", "activity-detail", `Person: ${entry.person}`));
       details.append(element("div", "activity-times", start + end + reason));
+      if (entry.title_key && typeof MonitorStats !== "undefined") {
+        const open = element("button", "stats-text-button activity-title-stats", "Title stats");
+        open.type = "button";
+        open.addEventListener("click", () => {
+          document.getElementById("stats-tab")?.click();
+          MonitorStats.openTitle(entry.title_key, "all");
+        });
+        details.append(open);
+      }
       row.append(details);
       list.append(row);
     }

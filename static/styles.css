@@ -1880,3 +1880,13 @@ button.stats-top-name { cursor: pointer; text-decoration: underline; text-decora
   border-left: 3px solid var(--warning); background: color-mix(in srgb, var(--warning) 8%, transparent);
 }
 .settings-restart-confirm p { margin: 0; color: var(--text); font-size: 13px; line-height: 1.5; }
+
+/* Title pages (stats.js renderTitle) and the links that open them. */
+.stats-link { justify-self: start; overflow: hidden; max-width: 100%; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; text-decoration: underline; text-decoration-color: var(--hairline-strong); text-underline-offset: 3px; }
+.stats-link.strong { font-weight: 700; }
+.stats-link:hover { text-decoration-color: currentColor; }
+.stats-link:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.stats-person-header.stats-title-header { grid-template-columns: 44px auto minmax(0, 1fr); }
+.stats-title-copy { display: grid; gap: 2px; min-width: 0; }
+.activity-title-stats { margin: 10px 0 0 64px; }
+.stats-recent-copy > .stats-wrap { white-space: normal; }
