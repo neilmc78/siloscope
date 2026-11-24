@@ -78,6 +78,7 @@ type playbackActivity struct {
 	ID              string   `json:"id"`
 	Source          string   `json:"source"`
 	Title           string   `json:"title"`
+	TitleKey        string   `json:"title_key,omitempty"` // opens the title's stats page
 	User            string   `json:"user"`
 	Method          string   `json:"method"`
 	Status          string   `json:"status"`
@@ -128,7 +129,7 @@ func (app *application) activityJSON(writer http.ResponseWriter, request *http.R
 			COALESCE(p.play_method, ''), p.status, COALESCE(p.state, ''), p.origin, COALESCE(p.end_reason, ''),
 			p.started_at, p.ended_at, p.updated_at, p.played_s, p.paused_s, p.percent_complete, p.watched,
 			COALESCE(p.client_name, p.client_product, ''), COALESCE(p.platform, ''), COALESCE(p.ip_address, ''), COALESCE(p.location, ''),
-			COALESCE(p.source_video_resolution, '')
+			COALESCE(p.source_video_resolution, ''), COALESCE(p.media_type, '')
 		FROM plays p
 		LEFT JOIN accounts a ON a.id = p.account_id
 		LEFT JOIN people pe ON pe.id = a.person_id
@@ -146,15 +147,16 @@ func (app *application) activityJSON(writer http.ResponseWriter, request *http.R
 		var ended, season, episode, personID sql.NullInt64
 		var played, paused, percent sql.NullFloat64
 		var watched sql.NullBool
-		var source, method, series, episodeTitle string
+		var source, method, series, episodeTitle, mediaType string
 		if err := rows.Scan(&id, &source, &entry.Title, &series, &season, &episode, &episodeTitle, &entry.Poster,
 			&entry.User, &personID, &entry.Person, &entry.Profile, &method, &entry.Status, &entry.State, &entry.Origin, &entry.EndReason,
 			&started, &ended, &updated, &played, &paused, &percent, &watched,
-			&entry.Client, &entry.Platform, &entry.IP, &entry.Location, &entry.Quality); err != nil {
+			&entry.Client, &entry.Platform, &entry.IP, &entry.Location, &entry.Quality, &mediaType); err != nil {
 			writeJSONError(writer, http.StatusInternalServerError, "History could not be read")
 			return
 		}
 		entry.ID = strconv.FormatInt(id, 10)
+		entry.TitleKey, _, _ = titleKeyFor(mediaType, entry.Title, series, episode.Valid)
 		entry.Source = map[string]string{"silo": "Silo", "plex": "Plex"}[source]
 		if series != "" {
 			entry.Series = series

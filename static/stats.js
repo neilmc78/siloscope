@@ -20,7 +20,7 @@ const MonitorStats = (() => {
   const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
   const zone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 
-  const state = { renaming: false, renameDraft: "", renameError: "", renameSaving: false, people: [], notice: "", view: "overview", range: "7d", source: "all", person: null, data: null, users: null, sort: "plays", query: "", loading: false, error: "" };
+  const state = { renaming: false, renameDraft: "", renameError: "", renameSaving: false, people: [], notice: "", view: "overview", range: "7d", source: "all", person: null, title: null, titleFrom: null, titleData: null, data: null, users: null, sort: "plays", query: "", loading: false, error: "" };
   let request = 0;
 
   function make(tag, className, text) {
@@ -37,7 +37,7 @@ const MonitorStats = (() => {
   }
 
   function plural(count, word) {
-    return `${Number(count).toLocaleString()} ${word}${count === 1 ? "" : "s"}`;
+    return `${Number(count).toLocaleString()} ${word}${count === 1 ? "" : /(ch|sh|s|x)$/.test(word) ? "es" : "s"}`;
   }
 
   function duration(seconds) {
@@ -403,6 +403,16 @@ const MonitorStats = (() => {
     return node;
   }
 
+  // titleName is a title that opens its page, or plain text without a key.
+  function titleName(text, key, tag = "span") {
+    if (!key) return make(tag, "", text);
+    const button = make("button", "stats-link", text);
+    button.type = "button";
+    button.addEventListener("click", () => openTitle(key));
+    if (tag === "strong") button.classList.add("strong");
+    return button;
+  }
+
   function recentList(title, plays, showPerson) {
     const node = card(title);
     if (!plays?.length) {
@@ -413,7 +423,7 @@ const MonitorStats = (() => {
     for (const play of plays) {
       const row = make("li", "stats-recent-row");
       const copy = make("span", "stats-recent-copy");
-      copy.append(make("strong", "", play.title));
+      copy.append(titleName(play.title, play.title_key, "strong"));
       if (play.subtitle) copy.append(make("span", "", play.subtitle));
       const when = new Date(play.started_at).toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
       copy.append(make("span", "stats-muted", [showPerson ? play.person : "", play.platform, when].filter(Boolean).join(" · ")));
@@ -479,7 +489,7 @@ const MonitorStats = (() => {
       }
       return set;
     };
-    if (!state.person) {
+    if (!state.person && !state.title) {
       bar.append(group("View", [["overview", "Overview"], ["users", "Users"]], state.view, value => { state.view = value; load(); }));
     }
     bar.append(
@@ -491,20 +501,108 @@ const MonitorStats = (() => {
 
   function openPerson(id) {
     stopRenaming();
+    state.title = null;
     state.person = id;
     state.notice = "";
     load();
     document.querySelector(".page-shell")?.scrollTo(0, 0);
   }
 
+  // openTitle shows a movie's or show's page; its back button returns to the
+  // overview or person page it was opened from. History opens it for all time.
+  function openTitle(key, range) {
+    stopRenaming();
+    if (range) state.range = range;
+    if (!state.title) state.titleFrom = { person: state.person, view: state.view };
+    state.title = key;
+    state.titleData = null;
+    load();
+    document.querySelector(".page-shell")?.scrollTo(0, 0);
+  }
+
+  const openTitleItem = item => openTitle(item.key);
+
+  function closeTitle() {
+    const from = state.titleFrom || { person: null, view: "overview" };
+    state.title = null;
+    state.titleData = null;
+    state.person = from.person;
+    state.view = from.view;
+    load();
+  }
+
+  function titleHeader(data) {
+    const header = make("div", "stats-person-header stats-title-header");
+    const back = make("button", "icon-button", "");
+    back.type = "button";
+    back.setAttribute("aria-label", "Back");
+    back.title = "Back";
+    back.append(make("span", "ui-icon icon-back"));
+    back.addEventListener("click", closeTitle);
+    const copy = make("div", "stats-title-copy");
+    if (!data) {
+      header.append(back);
+      return header;
+    }
+    copy.append(make("h3", "stats-person-name", data.title), make("span", "stats-muted", data.kind === "show" ? "Show" : "Movie"));
+    header.append(back, poster(data.poster_url, "stats-poster small"), copy);
+    return header;
+  }
+
+  function viewerSummary(viewer, kind) {
+    if (kind === "show") {
+      const parts = [viewer.completed ? plural(viewer.completed, "episode") + " watched" : "No episodes finished"];
+      if (viewer.last_episode) parts.push(`last ${viewer.last_episode}`);
+      return parts.join(" · ");
+    }
+    if (viewer.completed > 1) return `Watched ${viewer.completed} times`;
+    if (viewer.completed === 1) return "Watched";
+    return viewer.progress != null ? `Stopped at ${Math.round(viewer.progress)}%` : `${duration(viewer.watch_seconds)} watched`;
+  }
+
+  function renderTitle(data) {
+    const tiles = make("div", "stats-tiles");
+    for (const [label, value] of [["Plays", data.totals.plays.toLocaleString()], ["Watch time", duration(data.totals.watch_seconds)], ["Viewers", data.totals.viewers.toLocaleString()], ["Rewatches", data.totals.rewatches.toLocaleString()]]) {
+      const tile = make("div", "stats-tile");
+      tile.append(make("strong", "stats-tile-value", value), make("span", "stats-tile-label", label));
+      tiles.append(tile);
+    }
+    const viewers = card("Who watched");
+    if (data.viewers?.length) {
+      const list = make("ul", "stats-accounts");
+      for (const viewer of data.viewers) {
+        const row = make("li", "stats-account");
+        const copy = make("span", "stats-recent-copy");
+        const name = make("button", "stats-link strong", viewer.name);
+        name.type = "button";
+        name.addEventListener("click", () => openPerson(viewer.person_id));
+        // A movie's summary already says "Watched 2 times".
+        const rewatches = data.kind === "show" && viewer.rewatches ? ` · ${plural(viewer.rewatches, "rewatch")}` : "";
+        copy.append(name, make("span", "stats-muted stats-wrap", `${viewerSummary(viewer, data.kind)}${rewatches} · ${plural(viewer.plays, "play")}`));
+        row.append(copy, make("span", "stats-muted", relative(viewer.last_watched)));
+        list.append(row);
+      }
+      viewers.append(list);
+    } else viewers.append(make("p", "stats-empty", "No known viewers in this period"));
+    const content = [tiles, viewers];
+    if (data.plays_over_time?.length) {
+      const plays = card("Plays over time");
+      plays.append(lineChart([{ label: "Plays", color: COLORS.series, value: point => point.plays }], data.plays_over_time, data.bucket, value => String(value)));
+      content.push(plays);
+    }
+    if (data.kind === "show") content.push(rankedBars("Most watched episodes", (data.episodes || []).map(episode => ({ name: episode.label, plays: episode.plays })), "play"));
+    content.push(methodCard(data.methods || {}), recentList("Plays", data.recent, true));
+    return content;
+  }
+
   function renderOverview(data) {
     const content = [statTiles(data.totals, true), ...overTimeCards(data, true), ...qualityCards(data.quality, true)];
     content.push(
       rankedBars("Top platforms", data.platforms, "play"),
-      topList("Most watched movies", data.top_movies, "plays", "Plays"),
-      topList("Most popular movies", data.popular_movies, "users", "Users"),
-      topList("Most watched shows", data.top_shows, "plays", "Plays"),
-      topList("Most popular shows", data.popular_shows, "users", "Users"),
+      topList("Most watched movies", data.top_movies, "plays", "Plays", openTitleItem),
+      topList("Most popular movies", data.popular_movies, "users", "Users", openTitleItem),
+      topList("Most watched shows", data.top_shows, "plays", "Plays", openTitleItem),
+      topList("Most popular shows", data.popular_shows, "users", "Users", openTitleItem),
       topList("Most active users", (data.top_users || []).map(user => ({ ...user, title: user.name })), "plays", "Plays", user => openPerson(user.person_id), false),
       recentList("Recently watched", data.recent, true),
     );
@@ -783,8 +881,8 @@ const MonitorStats = (() => {
       ...overTimeCards(data, false),
       ...qualityCards(data.quality, false),
       rankedBars("Platforms", data.platforms, "play"),
-      topList("Most watched shows", data.top_shows, "plays", "Plays"),
-      topList("Most watched movies", data.top_movies, "plays", "Plays"),
+      topList("Most watched shows", data.top_shows, "plays", "Plays", openTitleItem),
+      topList("Most watched movies", data.top_movies, "plays", "Plays", openTitleItem),
       devices,
       addresses,
       recentList("Recent plays", data.recent, false),
@@ -793,9 +891,11 @@ const MonitorStats = (() => {
 
   function render() {
     const content = [];
-    if (state.person && state.data?.person) content.push(personHeader(state.data.person));
+    if (state.title) content.push(titleHeader(state.titleData));
+    else if (state.person && state.data?.person) content.push(personHeader(state.data.person));
     content.push(filters());
     if (state.error) content.push(make("p", "inline-message", state.error));
+    else if (state.title) content.push(...(state.titleData ? renderTitle(state.titleData) : [make("p", "stats-muted", "Loading…")]));
     else if (state.loading && !state.data && !state.users) content.push(make("p", "stats-muted", "Loading stats…"));
     else if (state.person && state.data?.person) content.push(...renderPerson(state.data));
     else if (state.view === "users" && state.users) content.push(...renderUsers(state.users));
@@ -811,7 +911,22 @@ const MonitorStats = (() => {
     render();
     const params = new URLSearchParams({ range: state.range, source: state.source, tz: zone });
     try {
-      if (state.view === "users" && !state.person) {
+      if (state.title) {
+        params.set("key", state.title);
+        const response = await fetch(`/api/stats/title?${params}`, { cache: "no-store", signal: AbortSignal.timeout(20000) });
+        if (response.status === 404) {
+          if (id !== request) return;
+          state.titleData = null;
+          state.error = "No plays of this title in this period.";
+          state.loading = false;
+          render();
+          return;
+        }
+        if (!response.ok) throw new Error();
+        const data = await response.json();
+        if (id !== request) return;
+        state.titleData = data;
+      } else if (state.view === "users" && !state.person) {
         const response = await fetch(`/api/stats/users?${params}`, { cache: "no-store", signal: AbortSignal.timeout(20000) });
         if (!response.ok) throw new Error();
         const users = await response.json();
@@ -855,5 +970,5 @@ const MonitorStats = (() => {
     window.cancelAnimationFrame(resizeFrame);
     resizeFrame = window.requestAnimationFrame(render);
   });
-  return { load };
+  return { load, openTitle };
 })();

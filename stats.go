@@ -162,6 +162,7 @@ type concurrencyBucket struct {
 }
 
 type rankedTitle struct {
+	Key    string `json:"key"` // a title page's key (titleKey)
 	Title  string `json:"title"`
 	Poster string `json:"poster_url,omitempty"`
 	Plays  int    `json:"plays"`
@@ -225,6 +226,7 @@ type recentPlay struct {
 	ID           int64    `json:"id"`
 	Source       string   `json:"source"`
 	Title        string   `json:"title"`
+	TitleKey     string   `json:"title_key,omitempty"`
 	Subtitle     string   `json:"subtitle,omitempty"`
 	Poster       string   `json:"poster_url,omitempty"`
 	Person       string   `json:"person,omitempty"`
@@ -258,12 +260,19 @@ type addressSummary struct {
 	LastSeen int64  `json:"last_seen"`
 }
 
+// titleKey names the movie or show a play belongs to, the same on both
+// servers: "movie:<title>" or "show:<series>", lower case. It returns the
+// display name and whether it is a show; other media have no key.
 func titleKey(play statsPlay) (string, string, bool) {
-	if play.seriesTitle != "" && (play.mediaType == "episode" || play.episode.Valid) {
-		return "show:" + strings.ToLower(play.seriesTitle), play.seriesTitle, true
+	return titleKeyFor(play.mediaType, play.title, play.seriesTitle, play.episode.Valid)
+}
+
+func titleKeyFor(mediaType, title, seriesTitle string, hasEpisode bool) (string, string, bool) {
+	if seriesTitle != "" && (mediaType == "episode" || hasEpisode) {
+		return "show:" + strings.ToLower(seriesTitle), seriesTitle, true
 	}
-	if play.mediaType == "movie" {
-		return "movie:" + strings.ToLower(play.title), play.title, false
+	if mediaType == "movie" {
+		return "movie:" + strings.ToLower(title), title, false
 	}
 	return "", "", false
 }
@@ -299,20 +308,13 @@ func (app *application) buildStats(request *http.Request, personID int64) (stats
 		return statsPayload{}, err
 	}
 	payload := statsPayload{Range: r.key, To: r.to, Bucket: r.bucket, Methods: map[string]int{"direct_play": 0, "direct_stream": 0, "transcode": 0}}
-	if !r.from.IsZero() {
-		from := r.from
-		payload.From = &from
-	} else if len(plays) > 0 {
-		from := time.UnixMilli(plays[0].started).In(r.location)
-		payload.From = &from
-	}
+	payload.From = rangeStart(r, plays)
 
 	groups := map[int64]bool{}
 	people := map[int64]bool{}
 	titleKeys := map[string]bool{}
 	devices := map[string]*deviceSummary{}
 	addresses := map[string]*addressSummary{}
-	buckets := map[int64]*statsBucket{}
 	movies, shows := map[string]*rankedTitle{}, map[string]*rankedTitle{}
 	persons := map[int64]*rankedPerson{}
 	platforms := map[string]*rankedName{}
@@ -327,15 +329,7 @@ func (app *application) buildStats(request *http.Request, personID int64) (stats
 		}
 		payload.Totals.WatchSeconds += play.watchSeconds
 
-		bucketTime := r.bucketStart(started)
-		bucket := buckets[bucketTime.Unix()]
-		if bucket == nil {
-			bucket = &statsBucket{Start: bucketTime}
-			buckets[bucketTime.Unix()] = bucket
-		}
-		bucket.WatchSeconds += play.watchSeconds
 		if newGroup {
-			bucket.Plays++
 			payload.ByWeekday[(int(started.Weekday())+6)%7]++
 			payload.ByHour[started.Hour()]++
 			if _, ok := payload.Methods[play.method]; ok {
@@ -351,7 +345,7 @@ func (app *application) buildStats(request *http.Request, personID int64) (stats
 			}
 			entry := target[key]
 			if entry == nil {
-				entry = &rankedTitle{Title: name, people: map[int64]bool{}, groups: map[int64]bool{}}
+				entry = &rankedTitle{Key: key, Title: name, people: map[int64]bool{}, groups: map[int64]bool{}}
 				target[key] = entry
 			}
 			entry.groups[play.group] = true
@@ -410,16 +404,7 @@ func (app *application) buildStats(request *http.Request, personID int64) (stats
 	payload.Totals.Titles = len(titleKeys)
 	payload.Totals.Devices = len(devices)
 
-	// Every bucket in range, including empty ones, so lines do not skip gaps.
-	if payload.From != nil {
-		for t := r.bucketStart(*payload.From); !t.After(r.to); t = r.nextBucket(t) {
-			if bucket := buckets[t.Unix()]; bucket != nil {
-				payload.OverTime = append(payload.OverTime, *bucket)
-			} else {
-				payload.OverTime = append(payload.OverTime, statsBucket{Start: t})
-			}
-		}
-	}
+	payload.OverTime = playsOverTime(plays, r, payload.From)
 	payload.Concurrent, payload.Peak = concurrency(plays, r, payload.OverTime)
 	payload.Quality = streamQuality(plays)
 	// Bandwidth is sampled per server, not per person, so a person's page has none.
@@ -452,28 +437,7 @@ func (app *application) buildStats(request *http.Request, personID int64) (stats
 		payload.TopUsers = payload.TopUsers[:5]
 	}
 
-	seenGroups := map[int64]bool{}
-	for index := len(plays) - 1; index >= 0 && len(payload.Recent) < 10; index-- {
-		play := plays[index]
-		if seenGroups[play.group] {
-			continue
-		}
-		seenGroups[play.group] = true
-		entry := recentPlay{ID: play.id, Source: play.source, Title: firstNonEmpty(play.seriesTitle, play.title), Poster: play.poster,
-			Person: play.personName, Platform: firstNonEmpty(play.platform, play.client), Method: play.method,
-			StartedAt: play.started, WatchSeconds: play.watchSeconds, Watched: play.watched, Active: play.status == "active"}
-		if play.seriesTitle != "" {
-			label := ""
-			if play.season.Valid && play.episode.Valid {
-				label = "S" + strconv.FormatInt(play.season.Int64, 10) + " E" + strconv.FormatInt(play.episode.Int64, 10)
-			}
-			entry.Subtitle = strings.TrimSpace(strings.Trim(label+" · "+play.episodeTitle, " ·"))
-		}
-		if play.percent.Valid {
-			entry.Percent = &play.percent.Float64
-		}
-		payload.Recent = append(payload.Recent, entry)
-	}
+	payload.Recent = recentPlays(plays, 10)
 
 	if personID > 0 {
 		for _, device := range devices {
@@ -486,6 +450,85 @@ func (app *application) buildStats(request *http.Request, personID int64) (stats
 		sort.Slice(payload.Addresses, func(i, j int) bool { return payload.Addresses[i].LastSeen > payload.Addresses[j].LastSeen })
 	}
 	return payload, nil
+}
+
+// rangeStart is when the stats begin: the range's start, or for all time
+// the first play. Nil means all time with no plays.
+func rangeStart(r statsRange, plays []statsPlay) *time.Time {
+	if !r.from.IsZero() {
+		from := r.from
+		return &from
+	}
+	if len(plays) > 0 {
+		from := time.UnixMilli(plays[0].started).In(r.location)
+		return &from
+	}
+	return nil
+}
+
+// playsOverTime counts plays and watch time in every bucket from from,
+// including empty ones, so lines do not skip gaps.
+func playsOverTime(plays []statsPlay, r statsRange, from *time.Time) []statsBucket {
+	if from == nil {
+		return nil
+	}
+	buckets := map[int64]*statsBucket{}
+	groups := map[int64]bool{}
+	for _, play := range plays {
+		start := r.bucketStart(time.UnixMilli(play.started))
+		bucket := buckets[start.Unix()]
+		if bucket == nil {
+			bucket = &statsBucket{Start: start}
+			buckets[start.Unix()] = bucket
+		}
+		bucket.WatchSeconds += play.watchSeconds
+		if !groups[play.group] {
+			groups[play.group] = true
+			bucket.Plays++
+		}
+	}
+	var series []statsBucket
+	for t := r.bucketStart(*from); !t.After(r.to); t = r.nextBucket(t) {
+		if bucket := buckets[t.Unix()]; bucket != nil {
+			series = append(series, *bucket)
+		} else {
+			series = append(series, statsBucket{Start: t})
+		}
+	}
+	return series
+}
+
+// recentPlays lists the latest plays, newest first, one per resume group.
+func recentPlays(plays []statsPlay, limit int) []recentPlay {
+	var recent []recentPlay
+	seenGroups := map[int64]bool{}
+	for index := len(plays) - 1; index >= 0 && len(recent) < limit; index-- {
+		play := plays[index]
+		if seenGroups[play.group] {
+			continue
+		}
+		seenGroups[play.group] = true
+		key, _, _ := titleKey(play)
+		entry := recentPlay{ID: play.id, Source: play.source, Title: firstNonEmpty(play.seriesTitle, play.title), TitleKey: key, Poster: play.poster,
+			Person: play.personName, Platform: firstNonEmpty(play.platform, play.client), Method: play.method,
+			StartedAt: play.started, WatchSeconds: play.watchSeconds, Watched: play.watched, Active: play.status == "active"}
+		if play.seriesTitle != "" {
+			entry.Subtitle = strings.TrimSpace(strings.Trim(episodeLabel(play)+" · "+play.episodeTitle, " ·"))
+		}
+		if play.percent.Valid {
+			entry.Percent = &play.percent.Float64
+		}
+		recent = append(recent, entry)
+	}
+	return recent
+}
+
+// episodeLabel is "S1 E2", or empty without both numbers.
+func episodeLabel(play statsPlay) string {
+	if !play.season.Valid || !play.episode.Valid {
+		return ""
+	}
+	return "S" + strconv.FormatInt(play.season.Int64, 10) + " E" + strconv.FormatInt(play.episode.Int64, 10)
 }
 
 // concurrency sweeps play intervals for the peak number of simultaneous

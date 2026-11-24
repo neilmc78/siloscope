@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -225,5 +226,73 @@ func TestReasonLabels(t *testing.T) {
 		if got := reasonLabel(code); got != want {
 			t.Errorf("reasonLabel(%q) = %q, want %q", code, got, want)
 		}
+	}
+}
+
+func TestTitleStats(t *testing.T) {
+	s, err := openStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.close()
+	app := &application{store: s}
+	ctx := context.Background()
+	sam, _ := s.ensureAccount(ctx, accountInfo{Source: "plex", ExternalID: "1", DisplayName: "Sam"}, time.Time{})
+	jo, _ := s.ensureAccount(ctx, accountInfo{Source: "silo", ExternalID: "7", DisplayName: "Jo"}, time.Time{})
+	base := time.Now().Add(-48 * time.Hour)
+	key := 0
+	add := func(source string, account int64, series string, season, episode int, hours float64, watched bool, group int64) {
+		key++
+		fields := playFields{}
+		fields.set("status", "stopped")
+		fields.set("account_id", account)
+		fields.set("media_type", "episode")
+		fields.set("title", "Episode")
+		fields.set("series_title", series)
+		fields.set("season_number", season)
+		fields.set("episode_number", episode)
+		start := base.Add(time.Duration(hours * float64(time.Hour)))
+		fields.set("started_at", start)
+		fields.set("ended_at", start.Add(40*time.Minute))
+		fields.set("played_s", 2400)
+		fields.set("watched", watched)
+		fields.set("play_method", "direct_play")
+		if group != 0 {
+			fields.set("group_id", group)
+		}
+		if _, _, err := s.upsertPlay(ctx, source, "k"+string(rune('a'+key)), fields); err != nil {
+			t.Fatal(err)
+		}
+	}
+	add("plex", sam, "The Show", 1, 1, 0, true, 0)
+	add("plex", sam, "The Show", 1, 2, 1, false, 900) // stopped part way...
+	add("plex", sam, "The Show", 1, 2, 2, true, 900)  // ...and resumed: one viewing
+	add("plex", sam, "The Show", 1, 1, 3, true, 0)    // a rewatch
+	add("silo", jo, "the show", 1, 1, 4, true, 0)     // the same show on the other server
+	add("silo", jo, "Another Show", 1, 1, 5, true, 0)
+
+	recorder := httptest.NewRecorder()
+	app.titleStatsJSON(recorder, httptest.NewRequest("GET", "/api/stats/title?key=show:the+show&range=7d", nil))
+	if recorder.Code != 200 {
+		t.Fatalf("status %d: %s", recorder.Code, recorder.Body)
+	}
+	var title titleStats
+	if err := json.Unmarshal(recorder.Body.Bytes(), &title); err != nil {
+		t.Fatal(err)
+	}
+	if title.Kind != "show" || title.Totals.Plays != 4 || title.Totals.Viewers != 2 || title.Totals.Completions != 4 || title.Totals.Rewatches != 1 {
+		t.Fatalf("title = %+v, want a show with 4 plays, 2 viewers, 4 completions, 1 rewatch", title.Totals)
+	}
+	if len(title.Viewers) != 2 || title.Viewers[0].Name != "Jo" || title.Viewers[1].Completed != 2 || title.Viewers[1].Rewatches != 1 || title.Viewers[1].LastEpisode != "S1 E1" {
+		t.Fatalf("viewers = %+v, want Jo (latest) then Sam with 2 episodes, 1 rewatch, last S1 E1", title.Viewers)
+	}
+	if len(title.Episodes) != 2 || title.Episodes[0].Label != "S1 E1" || title.Episodes[0].Plays != 3 || title.Episodes[0].Viewers != 2 {
+		t.Fatalf("episodes = %+v, want S1 E1 first with 3 plays by 2 viewers", title.Episodes)
+	}
+
+	recorder = httptest.NewRecorder()
+	app.titleStatsJSON(recorder, httptest.NewRequest("GET", "/api/stats/title?key=movie:nothing&range=7d", nil))
+	if recorder.Code != 404 {
+		t.Fatalf("unknown title: status %d, want 404", recorder.Code)
 	}
 }
