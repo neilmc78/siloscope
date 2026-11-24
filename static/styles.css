@@ -1890,3 +1890,17 @@ button.stats-top-name { cursor: pointer; text-decoration: underline; text-decora
 .stats-title-copy { display: grid; gap: 2px; min-width: 0; }
 .activity-title-stats { margin: 10px 0 0 64px; }
 .stats-recent-copy > .stats-wrap { white-space: normal; }
+
+/* Libraries view (stats.js renderLibraries). */
+.stats-added-strip { display: grid; grid-auto-flow: column; grid-auto-columns: 104px; gap: 12px; margin: 0; padding: 0 0 6px; overflow-x: auto; list-style: none; scroll-snap-type: x proximity; }
+.stats-added-item { scroll-snap-align: start; min-width: 0; }
+.stats-added-body { display: grid; gap: 3px; width: 100%; padding: 0; border: 0; background: none; color: inherit; font: inherit; font-size: 12px; text-align: left; }
+button.stats-added-body { cursor: pointer; }
+button.stats-added-body:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 8px; }
+.stats-added-body .stats-poster { width: 100%; margin-bottom: 4px; }
+.stats-added-body > strong, .stats-added-body > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stats-figures { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 12px 16px; margin: 0; }
+.stats-figure dt { color: var(--muted); font-size: 12px; }
+.stats-figure dd { margin: 2px 0 0; font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.stats-footnote { margin: 0; font-size: 12px; }
+.library-intro { margin: 0 0 12px; text-align: left; } .library-setup { margin: 0 0 12px; }

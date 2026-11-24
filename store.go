@@ -210,6 +210,28 @@ CREATE TABLE ingest_state (
 	);`,
 	// 4: History lists plays by when they ended, or were last seen while active.
 	`CREATE INDEX plays_last_activity ON plays(COALESCE(ended_at, updated_at));`,
+	// 5: Silo's catalog of movies and episodes, replaced by each catalog walk
+	// (library_usage.go), for library stats; and posters for the newest titles.
+	`
+CREATE TABLE catalog_items (
+	content_id     TEXT PRIMARY KEY,
+	type           TEXT NOT NULL,     -- movie, episode
+	title          TEXT NOT NULL,
+	series_id      TEXT,
+	series_title   TEXT,
+	season_number  INTEGER,
+	episode_number INTEGER,
+	year           INTEGER,
+	added_at       INTEGER NOT NULL,  -- unix ms
+	library_ids    TEXT NOT NULL,     -- comma separated
+	bytes          INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX catalog_items_added ON catalog_items(added_at);
+CREATE TABLE catalog_posters (
+	content_id TEXT PRIMARY KEY,      -- a movie or series
+	poster_url TEXT NOT NULL,         -- the poster cache's URL, empty when Silo has none
+	fetched_at INTEGER NOT NULL
+);`,
 }
 
 // playColumns lists every plays column an ingester may set. upsertPlay only
