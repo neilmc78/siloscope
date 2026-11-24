@@ -1600,7 +1600,7 @@ h2 {
 .stats-legend-count { color: var(--muted); font-size: 11px; }
 .stats-meters { display: grid; grid-template-columns: minmax(0, max-content) minmax(40px, 1fr) auto; align-items: center; gap: 8px 12px; margin: 0; padding: 0; list-style: none; font-size: 13px; }
 .stats-meter { display: contents; }
-.stats-meter-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 130px; }
+.stats-meter-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: min(200px, 40vw); }
 .stats-meter-track { height: 8px; border-radius: 4px; background: var(--hairline); }
 .stats-meter-fill { display: block; height: 100%; border-radius: 4px; background: var(--series-1); }
 .stats-meter-value { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }

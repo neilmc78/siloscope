@@ -37,6 +37,9 @@ type statsPlay struct {
 	status                     string
 	watched                    bool
 	percent                    sql.NullFloat64
+	// Stream quality (quality.go).
+	reasons, hwEncode    string
+	sourceRes, streamRes string
 }
 
 type statsRange struct {
@@ -116,7 +119,9 @@ func (app *application) loadStatsPlays(request *http.Request, r statsRange, sour
 				ELSE MAX(0, (COALESCE(p.ended_at, p.updated_at) - p.started_at) / 1000.0 - COALESCE(p.paused_s, 0)) END),
 			COALESCE(p.play_method, ''), COALESCE(NULLIF(p.platform, ''), p.client_product, ''), COALESCE(NULLIF(p.client_name, ''), p.client_product, ''),
 			COALESCE(NULLIF(p.device_name, ''), p.device_id, ''), COALESCE(p.ip_address, ''), COALESCE(p.location, ''),
-			p.status, COALESCE(p.watched, 0), p.percent_complete
+			p.status, COALESCE(p.watched, 0), p.percent_complete,
+			COALESCE(p.transcode_reason, ''), COALESCE(p.transcode_hw_encode, ''),
+			COALESCE(p.source_video_resolution, ''), COALESCE(p.stream_video_resolution, '')
 		FROM plays p
 		LEFT JOIN accounts a ON a.id = p.account_id
 		LEFT JOIN people pe ON pe.id = a.person_id
@@ -132,7 +137,8 @@ func (app *application) loadStatsPlays(request *http.Request, r statsRange, sour
 		if err := rows.Scan(&play.id, &play.group, &play.source, &play.personID, &play.personName, &play.mediaType,
 			&play.title, &play.seriesTitle, &play.poster, &play.episodeTitle, &play.season, &play.episode,
 			&play.started, &play.ended, &play.watchSeconds, &play.method, &play.platform, &play.client,
-			&play.device, &play.ip, &play.location, &play.status, &play.watched, &play.percent); err != nil {
+			&play.device, &play.ip, &play.location, &play.status, &play.watched, &play.percent,
+			&play.reasons, &play.hwEncode, &play.sourceRes, &play.streamRes); err != nil {
 			return nil, err
 		}
 		if play.status != "active" && !play.watched && play.watchSeconds < minimumPlaySeconds {
@@ -197,6 +203,7 @@ type statsPayload struct {
 	Recent     []recentPlay        `json:"recent"`
 	Person     *personDetail       `json:"person,omitempty"`
 	Devices    []deviceSummary     `json:"devices,omitempty"`
+	Quality    qualitySummary      `json:"quality"`
 	Addresses  []addressSummary    `json:"addresses,omitempty"`
 }
 
@@ -414,6 +421,11 @@ func (app *application) buildStats(request *http.Request, personID int64) (stats
 		}
 	}
 	payload.Concurrent, payload.Peak = concurrency(plays, r, payload.OverTime)
+	payload.Quality = streamQuality(plays)
+	// Bandwidth is sampled per server, not per person, so a person's page has none.
+	if personID == 0 {
+		payload.Quality.Bandwidth, payload.Quality.PeakBandwidth = app.bandwidthSeries(request.Context(), r, source, payload.OverTime)
+	}
 
 	for key, name := range platforms {
 		name.Plays = len(platformGroups[key])

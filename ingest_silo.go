@@ -67,6 +67,7 @@ type siloSessionRow struct {
 	PlayMethod         string   `json:"play_method"`
 	EffectivePlay      string   `json:"effective_play_method"`
 	VideoDecision      string   `json:"video_decision"`
+	AdaptationReasons  []string `json:"adaptation_reasons"` // why it isn't direct play; newer Silo only
 	AudioDecision      string   `json:"audio_decision"`
 	TranscodeHWAccel   string   `json:"transcode_hw_accel"`
 	ToneMapMode        string   `json:"tone_map_mode"`
@@ -462,6 +463,9 @@ func (ingest *siloIngester) recordSession(ctx context.Context, row siloSessionRo
 	fields.set("play_method", siloPlayMethod(firstNonEmpty(row.EffectivePlay, row.PlayMethod), row.VideoDecision, row.AudioDecision))
 	fields.set("video_decision", row.VideoDecision)
 	fields.set("audio_decision", row.AudioDecision)
+	if len(row.AdaptationReasons) > 0 {
+		fields.set("transcode_reason", strings.Join(row.AdaptationReasons, ","))
+	}
 	fields.set("transcode_hw_encode", row.TranscodeHWAccel)
 	fields.set("tone_mapping", row.ToneMapMode)
 	fields.set("source_container", row.SourceContainer)

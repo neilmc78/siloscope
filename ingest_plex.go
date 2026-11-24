@@ -571,6 +571,20 @@ func (ingest *plexIngester) recordSession(ctx context.Context, session plexXMLSe
 	fields.set("video_decision", video)
 	fields.set("audio_decision", audio)
 	fields.set("subtitle_decision", normalizeDecision(subtitle))
+	// Plex says what it changes but not why, so the reasons are what changed.
+	var reasons []string
+	if video == "transcode" {
+		reasons = append(reasons, "video_transcode")
+	}
+	if audio == "transcode" {
+		reasons = append(reasons, "audio_transcode")
+	}
+	if normalizeDecision(subtitle) == "burn" {
+		reasons = append(reasons, "subtitle_burn_in")
+	}
+	if len(reasons) > 0 {
+		fields.set("transcode_reason", strings.Join(reasons, ","))
+	}
 	method := "direct_play"
 	switch {
 	case video == "transcode" || audio == "transcode":
