@@ -288,11 +288,78 @@ const MonitorStats = (() => {
       const fill = make("span", "stats-meter-fill");
       fill.style.width = `${(item.plays / top) * 100}%`;
       track.append(fill);
-      row.append(make("span", "stats-meter-name", item.name), track, make("span", "stats-meter-value", plural(item.plays, unit)));
+      const name = make("span", "stats-meter-name", item.name);
+      name.title = item.name;
+      row.append(name, track, make("span", "stats-meter-value", plural(item.plays, unit)));
       list.append(row);
     }
     node.append(list);
     return node;
+  }
+
+  // Bandwidth in kbps as Mbps, one decimal under 10.
+  function mbps(kbps) {
+    const value = kbps / 1000;
+    return `${value < 10 ? value.toFixed(1) : Math.round(value)} Mbps`;
+  }
+
+  // Stream quality (quality.go): why streams transcode, direct play by
+  // device, resolution changes and, server-wide only, bandwidth.
+  function qualityCards(quality, includeBandwidth) {
+    if (!quality) return [];
+    const cards = [];
+    const transcodes = (quality.hardware_transcodes || 0) + (quality.software_transcodes || 0);
+    const reasons = rankedBars("Why streams transcode", quality.reasons, "stream");
+    if (!quality.reasons?.length) {
+      reasons.querySelector(".stats-empty").textContent = transcodes ? "No reasons recorded for these transcodes" : "No transcodes in this period";
+    }
+    if (transcodes) {
+      const hardware = Math.round((quality.hardware_transcodes / transcodes) * 100);
+      reasons.append(make("p", "stats-muted stats-peak", `${plural(transcodes, "transcode")} · ${hardware}% hardware, ${100 - hardware}% software`));
+    }
+    cards.push(reasons);
+
+    const devices = card("Direct play by device");
+    if (quality.devices?.length) {
+      const list = make("ol", "stats-meters");
+      for (const device of quality.devices) {
+        const direct = device.direct_play + device.direct_stream;
+        const percent = device.plays ? Math.round((direct / device.plays) * 100) : 0;
+        const row = make("li", "stats-meter");
+        row.title = `${device.name}: ${device.direct_play} direct play, ${device.direct_stream} direct stream, ${device.transcode} transcode`;
+        const track = make("span", "stats-meter-track");
+        const fill = make("span", "stats-meter-fill");
+        fill.style.width = `${percent}%`;
+        fill.style.background = COLORS.direct_play;
+        track.append(fill);
+        row.append(make("span", "stats-meter-name", device.name), track, make("span", "stats-meter-value", `${percent}% of ${plural(device.plays, "stream")}`));
+        list.append(row);
+      }
+      devices.append(list);
+    } else {
+      devices.append(make("p", "stats-empty", "No plays in this period"));
+    }
+    const resolutions = rankedBars("Resolution changes", quality.resolution_changes, "stream");
+    if (!quality.resolution_changes?.length) resolutions.querySelector(".stats-empty").textContent = "No resolution changes in this period";
+    cards.push(devices, resolutions);
+
+    if (includeBandwidth && quality.bandwidth?.length) {
+      const bandwidth = card("Bandwidth (Mbps)");
+      const legend = make("div", "stats-legend");
+      const series = [["Busiest minute", COLORS.series, point => point.peak_kbps / 1000], ["Local (average)", COLORS.direct_play, point => point.lan_kbps / 1000], ["Remote (average)", COLORS.transcode, point => point.wan_kbps / 1000]];
+      for (const [label, color] of series) {
+        const item = make("span", "stats-legend-label");
+        const swatch = make("span", "stats-swatch");
+        swatch.style.background = color;
+        item.append(swatch, document.createTextNode(label));
+        legend.append(item);
+      }
+      bandwidth.append(legend, lineChart(series.map(([label, color, value]) => ({ label, color, value })), quality.bandwidth, state.data?.bucket || "day", value => mbps(value * 1000)));
+      const peak = quality.peak_bandwidth;
+      if (peak) bandwidth.append(make("p", "stats-muted stats-peak", `Peak ${mbps(peak.kbps)}, ${new Date(peak.at).toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}`));
+      cards.push(bandwidth);
+    }
+    return cards;
   }
 
   function poster(url, className = "stats-poster") {
@@ -431,7 +498,7 @@ const MonitorStats = (() => {
   }
 
   function renderOverview(data) {
-    const content = [statTiles(data.totals, true), ...overTimeCards(data, true)];
+    const content = [statTiles(data.totals, true), ...overTimeCards(data, true), ...qualityCards(data.quality, true)];
     content.push(
       rankedBars("Top platforms", data.platforms, "play"),
       topList("Most watched movies", data.top_movies, "plays", "Plays"),
@@ -714,6 +781,7 @@ const MonitorStats = (() => {
       statTiles(data.totals, false),
       accounts,
       ...overTimeCards(data, false),
+      ...qualityCards(data.quality, false),
       rankedBars("Platforms", data.platforms, "play"),
       topList("Most watched shows", data.top_shows, "plays", "Plays"),
       topList("Most watched movies", data.top_movies, "plays", "Plays"),

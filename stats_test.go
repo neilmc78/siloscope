@@ -116,3 +116,114 @@ func TestAutoLinkMatchesEmailAcrossServers(t *testing.T) {
 		t.Fatal("auto link undid a manual unlink")
 	}
 }
+
+// Stream quality counts every stream: reasons, hardware against software,
+// resolution changes and per-device direct play, plus bandwidth from the
+// per-minute samples (the busiest minute and the average while streaming).
+func TestStreamQuality(t *testing.T) {
+	s, err := openStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.close()
+	app := &application{store: s}
+	ctx := context.Background()
+	account, _ := s.ensureAccount(ctx, accountInfo{Source: "silo", ExternalID: "1", DisplayName: "Neil"}, time.Time{})
+	base := time.Date(2026, 6, 8, 20, 0, 0, 0, time.UTC)
+	add := func(key, client, method, reasons, hw, from, to string) {
+		fields := playFields{}
+		fields.set("status", "stopped")
+		fields.set("account_id", account)
+		fields.set("media_type", "movie")
+		fields.set("title", "Film "+key)
+		fields.set("started_at", base)
+		fields.set("ended_at", base.Add(time.Hour))
+		fields.set("played_s", 3600.0)
+		fields.set("client_name", client)
+		fields.set("play_method", method)
+		fields.set("transcode_reason", reasons)
+		fields.set("transcode_hw_encode", hw)
+		fields.set("source_video_resolution", from)
+		fields.set("stream_video_resolution", to)
+		if _, _, err := s.upsertPlay(ctx, "silo", key, fields); err != nil {
+			t.Fatal(err)
+		}
+	}
+	add("a", "Silo Web", "transcode", "video_codec_unsupported,audio_channels_exceed", "vaapi", "4k", "1080p")
+	add("b", "Silo Web", "transcode", "video_codec_unsupported", "none", "1080p", "1080p")
+	add("c", "Silo Web", "direct_play", "", "", "1080p", "")
+	add("d", "Apple TV", "direct_play", "", "", "4k", "")
+	add("e", "Plex for Android", "transcode", "video_transcode,subtitle_burn_in", "", "2160", "720")
+
+	minute := func(m int) int64 { return base.Add(time.Duration(m) * time.Minute).UnixMilli() }
+	for _, sample := range [][5]int64{
+		{minute(0), 8000, 8000, 0, 1},
+		{minute(1), 20000, 5000, 15000, 2},
+		{minute(2), 0, 0, 0, 0}, // nothing playing: not part of the average
+	} {
+		if _, err := s.db.Exec(`INSERT INTO stream_samples (at, source, streams, direct_plays, direct_streams, transcodes, bandwidth_kbps, lan_kbps, wan_kbps)
+			VALUES (?, 'silo', ?, 0, 0, 0, ?, ?, ?)`, sample[0], sample[4], sample[1], sample[2], sample[3]); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	payload, err := app.buildStats(httptest.NewRequest("GET", "/api/stats?range=all", nil), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := payload.Quality
+	if len(q.Reasons) != 4 || q.Reasons[0] != (rankedName{Name: "Video codec unsupported", Plays: 2}) {
+		t.Fatalf("reasons = %+v", q.Reasons)
+	}
+	labels := map[string]bool{}
+	for _, reason := range q.Reasons {
+		labels[reason.Name] = true
+	}
+	for _, want := range []string{"Audio channels exceed", "Video transcode", "Subtitle burn in"} {
+		if !labels[want] {
+			t.Errorf("reason %q missing from %+v", want, q.Reasons)
+		}
+	}
+	if q.HardwareTranscode != 1 || q.SoftwareTranscode != 2 {
+		t.Fatalf("hardware %d software %d, want 1 and 2", q.HardwareTranscode, q.SoftwareTranscode)
+	}
+	// 1080p → 1080p is no change; 2160 and 4k read the same.
+	if len(q.Resolutions) != 2 || q.Resolutions[0].Name != "4K → 1080p" || q.Resolutions[1].Name != "4K → 720p" {
+		t.Fatalf("resolutions = %+v", q.Resolutions)
+	}
+	if len(q.Devices) != 3 || q.Devices[0] != (deviceQuality{Name: "Silo Web", Plays: 3, DirectPlay: 1, Transcode: 2}) {
+		t.Fatalf("devices = %+v", q.Devices)
+	}
+	if q.PeakBandwidth == nil || q.PeakBandwidth.Kbps != 20000 || !q.PeakBandwidth.At.Equal(base.Add(time.Minute)) {
+		t.Fatalf("peak bandwidth = %+v", q.PeakBandwidth)
+	}
+	var day *bandwidthBucket
+	for i := range q.Bandwidth {
+		if q.Bandwidth[i].PeakKbps > 0 {
+			day = &q.Bandwidth[i]
+		}
+	}
+	if day == nil || day.PeakKbps != 20000 || day.LANKbps != 6500 || day.WANKbps != 7500 {
+		t.Fatalf("bandwidth bucket = %+v, want peak 20000, LAN 6500, WAN 7500 (averaged over the 2 busy minutes)", day)
+	}
+
+	// A person's page has quality but no server-wide bandwidth.
+	person, err := app.buildStats(httptest.NewRequest("GET", "/api/stats?range=all", nil), 1)
+	if err == nil && (person.Quality.Bandwidth != nil || person.Quality.PeakBandwidth != nil) {
+		t.Fatalf("person bandwidth = %+v", person.Quality)
+	}
+}
+
+func TestReasonLabels(t *testing.T) {
+	for code, want := range map[string]string{
+		"video_codec_unsupported": "Video codec unsupported",
+		"hdr_tone_mapping":        "HDR tone mapping",
+		" audio_transcode ":       "Audio transcode",
+		"bitrate_exceeds_limit":   "Bitrate exceeds limit",
+		"":                        "",
+	} {
+		if got := reasonLabel(code); got != want {
+			t.Errorf("reasonLabel(%q) = %q, want %q", code, got, want)
+		}
+	}
+}
