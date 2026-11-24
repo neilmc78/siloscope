@@ -20,7 +20,7 @@ const MonitorStats = (() => {
   const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
   const zone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 
-  const state = { renaming: false, renameDraft: "", renameError: "", renameSaving: false, people: [], notice: "", view: "overview", range: "7d", source: "all", person: null, title: null, titleFrom: null, titleData: null, data: null, users: null, sort: "plays", query: "", loading: false, error: "" };
+  const state = { renaming: false, renameDraft: "", renameError: "", renameSaving: false, people: [], notice: "", view: "overview", range: "7d", source: "all", person: null, title: null, titleFrom: null, titleData: null, data: null, users: null, libraries: null, sort: "plays", query: "", loading: false, error: "" };
   let request = 0;
 
   function make(tag, className, text) {
@@ -490,7 +490,7 @@ const MonitorStats = (() => {
       return set;
     };
     if (!state.person && !state.title) {
-      bar.append(group("View", [["overview", "Overview"], ["users", "Users"]], state.view, value => { state.view = value; load(); }));
+      bar.append(group("View", [["overview", "Overview"], ["users", "Users"], ["libraries", "Libraries"]], state.view, value => { state.view = value; load(); }));
     }
     bar.append(
       group("Period", RANGES, state.range, value => { state.range = value; load(); }),
@@ -606,6 +606,93 @@ const MonitorStats = (() => {
       topList("Most active users", (data.top_users || []).map(user => ({ ...user, title: user.name })), "plays", "Plays", user => openPerson(user.person_id), false),
       recentList("Recently watched", data.recent, true),
     );
+    return content;
+  }
+
+  function size(bytes) {
+    return typeof formatBytes === "function" ? formatBytes(bytes) : `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+  }
+
+  function recentlyAddedCard(titles) {
+    const node = card("Recently added");
+    if (!titles?.length) {
+      node.append(make("p", "stats-empty", "Nothing added yet"));
+      return node;
+    }
+    const strip = make("ul", "stats-added-strip");
+    for (const title of titles) {
+      const item = make("li", "stats-added-item");
+      const body = make(title.played ? "button" : "div", "stats-added-body");
+      if (title.played) {
+        body.type = "button";
+        body.addEventListener("click", () => openTitle(title.key, "all"));
+      }
+      const when = new Date(title.added_at).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+      body.append(poster(title.poster_url, "stats-poster"), make("strong", "", title.title), make("span", "stats-muted", title.subtitle || when));
+      if (title.subtitle) body.append(make("span", "stats-muted", when));
+      item.append(body);
+      strip.append(item);
+    }
+    node.append(strip);
+    return node;
+  }
+
+  function libraryCard(library) {
+    const node = card(library.name);
+    const tv = library.episodes > 0 || library.type === "tv" || library.type === "series" || library.type === "shows";
+    const figures = make("dl", "stats-figures");
+    const rows = [
+      [tv ? "Shows" : "Movies", library.titles.toLocaleString()],
+      ...(tv ? [["Episodes", library.episodes.toLocaleString()]] : []),
+      ["Size", size(library.bytes)],
+      ["Added", tv ? plural(library.added_episodes, "episode") : plural(library.added_titles, tv ? "show" : "movie")],
+      ["Plays", library.plays.toLocaleString()],
+      ["Watch time", duration(library.watch_seconds)],
+      ["Viewers", library.viewers.toLocaleString()],
+      ["Never played", library.titles ? `${library.never_played.toLocaleString()} (${Math.round((library.never_played / library.titles) * 100)}%)` : "0"],
+    ];
+    for (const [label, value] of rows) {
+      const figure = make("div", "stats-figure");
+      figure.append(make("dt", "", label), make("dd", "", value));
+      figures.append(figure);
+    }
+    node.append(figures);
+    return node;
+  }
+
+  function renderLibraries(data) {
+    const content = [];
+    if (!data.libraries.length) {
+      const empty = card("Libraries");
+      empty.append(make("p", "stats-empty", data.error
+        ? `Silo's catalog could not be read: ${data.error}`
+        : "Library stats come from Silo's catalog, which Siloscope reads every six hours. Nothing has been read yet."));
+      return [empty];
+    }
+    content.push(recentlyAddedCard(data.recently_added));
+    if (data.added_over_time?.length) {
+      const added = card("Added over time");
+      added.append(lineChart([{ label: "Movies and episodes", color: COLORS.series, value: point => point.items.reduce((sum, count) => sum + count, 0) }],
+        data.added_over_time, data.bucket, value => String(value)));
+      content.push(added);
+    }
+    content.push(...data.libraries.map(libraryCard));
+    const unplayed = card("Never played, largest first");
+    if (data.never_played?.length) {
+      const list = make("ul", "stats-accounts");
+      for (const title of data.never_played) {
+        const row = make("li", "stats-account");
+        const copy = make("span", "stats-recent-copy");
+        const added = `added ${new Date(title.added_at).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}`;
+        copy.append(make("strong", "", title.title), make("span", "stats-muted", [title.library, added].filter(Boolean).join(" · ")));
+        row.append(copy, make("span", "stats-muted", size(title.bytes)));
+        list.append(row);
+      }
+      unplayed.append(list);
+    } else unplayed.append(make("p", "stats-empty", "Everything has been played at least once"));
+    content.push(unplayed);
+    const updated = data.updated_at ? `Catalog read ${relative(Date.parse(data.updated_at))}.` : "";
+    content.push(make("p", "stats-muted stats-footnote", `${updated} Plays count when the title is in a Silo library, from either server. Never played covers all time.`.trim()));
     return content;
   }
 
@@ -896,9 +983,10 @@ const MonitorStats = (() => {
     content.push(filters());
     if (state.error) content.push(make("p", "inline-message", state.error));
     else if (state.title) content.push(...(state.titleData ? renderTitle(state.titleData) : [make("p", "stats-muted", "Loading…")]));
-    else if (state.loading && !state.data && !state.users) content.push(make("p", "stats-muted", "Loading stats…"));
+    else if (state.loading && !state.data && !state.users && !state.libraries) content.push(make("p", "stats-muted", "Loading stats…"));
     else if (state.person && state.data?.person) content.push(...renderPerson(state.data));
     else if (state.view === "users" && state.users) content.push(...renderUsers(state.users));
+    else if (state.view === "libraries" && state.libraries) content.push(...renderLibraries(state.libraries));
     else if (state.view === "overview" && state.data) content.push(...renderOverview(state.data));
     root.replaceChildren(...content);
     root.setAttribute("aria-busy", String(state.loading));
@@ -926,6 +1014,12 @@ const MonitorStats = (() => {
         const data = await response.json();
         if (id !== request) return;
         state.titleData = data;
+      } else if (state.view === "libraries" && !state.person) {
+        const response = await fetch(`/api/stats/libraries?${params}`, { cache: "no-store", signal: AbortSignal.timeout(20000) });
+        if (!response.ok) throw new Error();
+        const libraries = await response.json();
+        if (id !== request) return;
+        state.libraries = libraries;
       } else if (state.view === "users" && !state.person) {
         const response = await fetch(`/api/stats/users?${params}`, { cache: "no-store", signal: AbortSignal.timeout(20000) });
         if (!response.ok) throw new Error();

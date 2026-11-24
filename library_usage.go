@@ -12,7 +12,7 @@ import (
 )
 
 // Library usage totals the size of every file Silo has catalogued, per
-// library. Silo's disk figures describe whole filesystems, so libraries that
+// library, and keeps the catalog itself for library stats (catalog.go). Silo's disk figures describe whole filesystems, so libraries that
 // share one NAS mount report identical numbers; the catalog says how much of
 // that each library holds without walking the share with du.
 
@@ -71,20 +71,16 @@ func (a *application) refreshLibraryUsage(ctx context.Context) {
 		return
 	}
 	seen := map[string]bool{}
+	var catalog []catalogItem
 	for _, kind := range []string{"movie", "episode"} {
 		err := silo.pages(ctx, "/api/v2/admin/catalog/items", url.Values{"type": {kind}}, func(raw json.RawMessage) error {
-			var items []struct {
-				Versions []struct {
-					FileID    string `json:"file_id"`
-					FileSize  int64  `json:"file_size"`
-					LibraryID string `json:"library_id"`
-				} `json:"versions"`
-			}
-			if err := json.Unmarshal(raw, &items); err != nil {
+			var entries []siloCatalogEntry
+			if err := json.Unmarshal(raw, &entries); err != nil {
 				return err
 			}
-			for _, item := range items {
-				for _, version := range item.Versions {
+			for _, entry := range entries {
+				item := entry.item()
+				for _, version := range entry.Versions {
 					library := libraries[version.LibraryID]
 					if library == nil || seen[version.FileID] {
 						continue
@@ -92,6 +88,10 @@ func (a *application) refreshLibraryUsage(ctx context.Context) {
 					seen[version.FileID] = true
 					library.Bytes += version.FileSize
 					library.Files++
+					item.Bytes += version.FileSize
+				}
+				if item.ContentID != "" && item.AddedAt > 0 {
+					catalog = append(catalog, item)
 				}
 			}
 			return nil
@@ -112,6 +112,13 @@ func (a *application) refreshLibraryUsage(ctx context.Context) {
 	a.libraryUsage.lastError = ""
 	a.libraryUsage.mu.Unlock()
 	log.Printf("library usage: %d libraries, %d files totalled", len(result), len(seen))
+	if a.store != nil {
+		if err := a.store.replaceCatalog(ctx, catalog); err != nil {
+			log.Printf("catalog: %v", err)
+			return
+		}
+		a.refreshCatalogPosters(ctx, silo)
+	}
 }
 
 func (a *application) libraryUsageJSON(writer http.ResponseWriter, _ *http.Request) {

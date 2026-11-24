@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"net/http/httptest"
 	"testing"
@@ -294,5 +295,86 @@ func TestTitleStats(t *testing.T) {
 	app.titleStatsJSON(recorder, httptest.NewRequest("GET", "/api/stats/title?key=movie:nothing&range=7d", nil))
 	if recorder.Code != 404 {
 		t.Fatalf("unknown title: status %d, want 404", recorder.Code)
+	}
+}
+
+func TestLibraryStats(t *testing.T) {
+	s, err := openStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.close()
+	app := &application{store: s}
+	ctx := context.Background()
+	sam, _ := s.ensureAccount(ctx, accountInfo{Source: "plex", ExternalID: "1", DisplayName: "Sam"}, time.Time{})
+	now := time.Now()
+	daysAgo := func(days int) int64 { return now.AddDate(0, 0, -days).UnixMilli() }
+	episode := func(id string, number int64, added int64) catalogItem {
+		return catalogItem{ContentID: id, Type: "episode", Title: "Ep", SeriesID: "series-1", SeriesTitle: "The Show",
+			SeasonNumber: sql.NullInt64{Int64: 1, Valid: true}, EpisodeNumber: sql.NullInt64{Int64: number, Valid: true},
+			AddedAt: added, LibraryIDs: []string{"2"}, Bytes: 1 << 30}
+	}
+	if err := s.replaceCatalog(ctx, []catalogItem{
+		{ContentID: "movie-a", Type: "movie", Title: "Arrival", AddedAt: daysAgo(2), LibraryIDs: []string{"1"}, Bytes: 10 << 30},
+		{ContentID: "movie-b", Type: "movie", Title: "Big Unwatched", AddedAt: daysAgo(60), LibraryIDs: []string{"1"}, Bytes: 20 << 30},
+		episode("ep-0", 1, daysAgo(40)),
+		episode("ep-1", 2, daysAgo(1)),
+		episode("ep-2", 3, daysAgo(1)+1000),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	play := func(key, mediaType, title, series string) {
+		fields := playFields{}
+		fields.set("status", "stopped")
+		fields.set("account_id", sam)
+		fields.set("media_type", mediaType)
+		fields.set("title", title)
+		if series != "" {
+			fields.set("series_title", series)
+			fields.set("episode_number", 2)
+		}
+		fields.set("started_at", now.Add(-time.Hour))
+		fields.set("ended_at", now)
+		fields.set("played_s", 3000)
+		if _, _, err := s.upsertPlay(ctx, "plex", key, fields); err != nil {
+			t.Fatal(err)
+		}
+	}
+	play("a", "movie", "ARRIVAL", "") // Plex play of a Silo title, different case
+	play("b", "episode", "Ep", "The Show")
+
+	items, err := s.loadCatalog(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest("GET", "/api/stats/libraries?range=7d", nil)
+	r := parseStatsRange(request)
+	plays, _ := app.loadStatsPlays(request, r, "", 0)
+	played, _ := s.playedTitleKeys(ctx)
+	stats := buildLibraryStats([]libraryUsage{{ID: "1", Name: "Movies", Type: "movies"}, {ID: "2", Name: "TV", Type: "tv"}},
+		items, plays, played, map[string]string{"series-1": "/poster"}, r)
+
+	movies, tv := stats.Libraries[0], stats.Libraries[1]
+	if movies.Titles != 2 || movies.AddedTitles != 1 || movies.Plays != 1 || movies.Viewers != 1 || movies.NeverPlayed != 1 {
+		t.Fatalf("movies = %+v, want 2 titles, 1 added, 1 play by 1 viewer, 1 never played", movies)
+	}
+	if tv.Titles != 1 || tv.Episodes != 3 || tv.AddedTitles != 1 || tv.AddedEpisodes != 2 || tv.Plays != 1 || tv.NeverPlayed != 0 {
+		t.Fatalf("tv = %+v, want 1 show, 3 episodes, 2 added, 1 play", tv)
+	}
+	if len(stats.Recent) != 3 || stats.Recent[0].Title != "The Show" || stats.Recent[0].Subtitle != "2 new episodes" ||
+		stats.Recent[0].Poster != "/poster" || stats.Recent[1].Title != "Arrival" || stats.Recent[0].Library != "TV" {
+		t.Fatalf("recently added = %+v, want The Show (2 new episodes, poster, TV) then Arrival", stats.Recent)
+	}
+	if len(stats.NeverPlayed) != 1 || stats.NeverPlayed[0].Title != "Big Unwatched" {
+		t.Fatalf("never played = %+v, want Big Unwatched", stats.NeverPlayed)
+	}
+	total := 0
+	for _, bucket := range stats.AddedOverTime {
+		for _, count := range bucket.Items {
+			total += count
+		}
+	}
+	if total != 3 {
+		t.Fatalf("added over time totals %d, want 3 items added in the week", total)
 	}
 }

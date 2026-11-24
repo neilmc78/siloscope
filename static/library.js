@@ -6,6 +6,7 @@ const Library = (() => {
   const query = document.getElementById("library-query");
   const list = document.getElementById("library-results");
   const status = document.getElementById("library-status");
+  const setup = document.getElementById("library-setup");
   const more = document.getElementById("library-more");
   const back = document.getElementById("library-back");
   const seriesHeading = document.getElementById("library-series");
@@ -45,7 +46,14 @@ const Library = (() => {
       if (!config.sources.includes(source)) source = config.sources[0] || "radarr";
       form.querySelector(`[value="${source}"]`).checked = true;
       query.disabled = config.sources.length === 0;
-      status.textContent = config.sources.length ? "" : "No library integrations configured";
+      form.hidden = config.sources.length === 0;
+      document.getElementById("library-operations-area").hidden = config.sources.length === 0;
+      status.textContent = "";
+      // Say what to set, since this tab does nothing until it is connected.
+      setup.textContent = config.sources.length === 0
+        ? "Connect Sonarr or Radarr to use this: set SONARR_URL and SONARR_API_KEY, or RADARR_URL and RADARR_API_KEY, in Siloscope's .env, then restart it."
+        : !enabled ? "Replace is off. Set ARR_REPLACEMENTS_ENABLED=true in Siloscope's .env and restart it to turn it on." : "";
+      setup.hidden = !setup.textContent;
       initialized = true;
       if (!query.disabled && (series || query.value.trim().length >= 2)) void search();
     } catch (error) { status.textContent = error.message; }
