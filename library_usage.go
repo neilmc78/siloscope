@@ -72,6 +72,7 @@ func (a *application) refreshLibraryUsage(ctx context.Context) {
 	}
 	seen := map[string]bool{}
 	var catalog []catalogItem
+	posterSources := map[string]string{} // title ID -> Silo's signed poster URL
 	for _, kind := range []string{"movie", "episode"} {
 		err := silo.pages(ctx, "/api/v2/admin/catalog/items", url.Values{"type": {kind}}, func(raw json.RawMessage) error {
 			var entries []siloCatalogEntry
@@ -92,6 +93,9 @@ func (a *application) refreshLibraryUsage(ctx context.Context) {
 				}
 				if item.ContentID != "" && item.AddedAt > 0 {
 					catalog = append(catalog, item)
+				}
+				if id := item.titleID(); id != "" && entry.PosterURL != "" && posterSources[id] == "" {
+					posterSources[id] = entry.PosterURL
 				}
 			}
 			return nil
@@ -117,7 +121,8 @@ func (a *application) refreshLibraryUsage(ctx context.Context) {
 			log.Printf("catalog: %v", err)
 			return
 		}
-		a.refreshCatalogPosters(ctx, silo)
+		sort.SliceStable(catalog, func(i, j int) bool { return catalog[i].AddedAt > catalog[j].AddedAt })
+		a.refreshCatalogPosters(ctx, catalog, posterSources)
 	}
 }
 

@@ -4,7 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 	"time"
 )
@@ -325,6 +328,9 @@ func TestLibraryStats(t *testing.T) {
 	}
 	play := func(key, mediaType, title, series string) {
 		fields := playFields{}
+		if key == "a" {
+			fields.set("poster_url", "/api/silo/poster?key=arrival") // saved from its session row
+		}
 		fields.set("status", "stopped")
 		fields.set("account_id", sam)
 		fields.set("media_type", mediaType)
@@ -350,9 +356,9 @@ func TestLibraryStats(t *testing.T) {
 	request := httptest.NewRequest("GET", "/api/stats/libraries?range=7d", nil)
 	r := parseStatsRange(request)
 	plays, _ := app.loadStatsPlays(request, r, "", 0)
-	played, _ := s.playedTitleKeys(ctx)
+	played, playPosters, _ := s.playedTitles(ctx)
 	stats := buildLibraryStats([]libraryUsage{{ID: "1", Name: "Movies", Type: "movies"}, {ID: "2", Name: "TV", Type: "tv"}},
-		items, plays, played, map[string]string{"series-1": "/poster"}, r)
+		items, plays, played, map[string]string{"series-1": "/poster"}, playPosters, r)
 
 	movies, tv := stats.Libraries[0], stats.Libraries[1]
 	if movies.Titles != 2 || movies.AddedTitles != 1 || movies.Plays != 1 || movies.Viewers != 1 || movies.NeverPlayed != 1 {
@@ -362,8 +368,9 @@ func TestLibraryStats(t *testing.T) {
 		t.Fatalf("tv = %+v, want 1 show, 3 episodes, 2 added, 1 play", tv)
 	}
 	if len(stats.Recent) != 3 || stats.Recent[0].Title != "The Show" || stats.Recent[0].Subtitle != "2 new episodes" ||
-		stats.Recent[0].Poster != "/poster" || stats.Recent[1].Title != "Arrival" || stats.Recent[0].Library != "TV" {
-		t.Fatalf("recently added = %+v, want The Show (2 new episodes, poster, TV) then Arrival", stats.Recent)
+		stats.Recent[0].Poster != "/poster" || stats.Recent[1].Title != "Arrival" || stats.Recent[0].Library != "TV" ||
+		stats.Recent[1].Poster != "/api/silo/poster?key=arrival" {
+		t.Fatalf("recently added = %+v, want The Show (2 new episodes, catalog poster, TV) then Arrival (its play's poster)", stats.Recent)
 	}
 	if len(stats.NeverPlayed) != 1 || stats.NeverPlayed[0].Title != "Big Unwatched" {
 		t.Fatalf("never played = %+v, want Big Unwatched", stats.NeverPlayed)
@@ -402,5 +409,43 @@ func TestSiloHistoryKeepsTranscodeReasons(t *testing.T) {
 	}
 	if reasons != "video_codec_unsupported,audio_channels_exceed" {
 		t.Fatalf("transcode_reason = %q, want both reasons from the history row", reasons)
+	}
+}
+
+// Silo's per-item page needs a viewer profile and refuses the admin key, so
+// recently added posters come from the signed poster_url on the catalog pages.
+func TestCatalogPostersComeFromCatalogPages(t *testing.T) {
+	s, err := openStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.close()
+	silo := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/api/v2/artwork/poster-1" && request.URL.Query().Get("sig") != "" {
+			writer.Header().Set("Content-Type", "image/png")
+			_, _ = writer.Write([]byte("\x89PNG\r\n\x1a\n"))
+			return
+		}
+		http.Error(writer, "profile required", http.StatusForbidden)
+	}))
+	defer silo.Close()
+	siloURL, _ := url.Parse(silo.URL)
+	app := &application{store: s, client: silo.Client(), config: config{siloURL: siloURL, apiKey: "key"}}
+	if app.posters, err = newPosterCache(app, t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	now := time.Now().UnixMilli()
+	items := []catalogItem{
+		{ContentID: "movie-1", Type: "movie", Title: "New", AddedAt: now, LibraryIDs: []string{"1"}},
+		{ContentID: "movie-2", Type: "movie", Title: "No Poster", AddedAt: now - 1000, LibraryIDs: []string{"1"}},
+	}
+	app.refreshCatalogPosters(ctx, items, map[string]string{"movie-1": "/api/v2/artwork/poster-1?sig=abc&exp=1"})
+	posters, err := s.catalogPosters(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(posters) != 1 || !strings.HasPrefix(posters["movie-1"], "/api/silo/poster?key=") {
+		t.Fatalf("posters = %v, want only movie-1 cached locally", posters)
 	}
 }
