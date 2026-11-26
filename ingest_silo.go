@@ -91,36 +91,38 @@ type siloSessionRow struct {
 }
 
 type siloHistoryEntry struct {
-	SessionID      string   `json:"session_id"`
-	LifecycleSeq   *int64   `json:"lifecycle_seq"`
-	UserID         string   `json:"user_id"`
-	Username       string   `json:"username"`
-	ProfileID      string   `json:"profile_id"`
-	ProfileName    string   `json:"profile_name"`
-	MediaItemID    string   `json:"media_item_id"`
-	MediaFileID    string   `json:"media_file_id"`
-	MediaTitle     string   `json:"media_title"`
-	MediaType      string   `json:"media_type"`
-	SeriesTitle    string   `json:"series_title"`
-	SeasonNumber   *int     `json:"season_number"`
-	EpisodeNumber  *int     `json:"episode_number"`
-	StartedAt      string   `json:"started_at"`
-	EndedAt        string   `json:"ended_at"`
-	Completed      bool     `json:"completed"`
-	Duration       *float64 `json:"duration_seconds"`
-	Watched        float64  `json:"watched_seconds"`
-	Played         *float64 `json:"played_seconds"`
-	Paused         *float64 `json:"paused_seconds"`
-	StartPosition  *float64 `json:"start_position_seconds"`
-	PlayMethod     string   `json:"play_method"`
-	VideoDecision  *string  `json:"video_decision"`
-	AudioDecision  *string  `json:"audio_decision"`
-	EndReason      *string  `json:"end_reason"`
-	ClientIP       *string  `json:"client_ip"`
-	ClientName     *string  `json:"client_name"`
-	ClientVersion  *string  `json:"client_version"`
-	DeviceID       *string  `json:"device_id"`
-	DevicePlatform *string  `json:"device_platform"`
+	SessionID     string   `json:"session_id"`
+	LifecycleSeq  *int64   `json:"lifecycle_seq"`
+	UserID        string   `json:"user_id"`
+	Username      string   `json:"username"`
+	ProfileID     string   `json:"profile_id"`
+	ProfileName   string   `json:"profile_name"`
+	MediaItemID   string   `json:"media_item_id"`
+	MediaFileID   string   `json:"media_file_id"`
+	MediaTitle    string   `json:"media_title"`
+	MediaType     string   `json:"media_type"`
+	SeriesTitle   string   `json:"series_title"`
+	SeasonNumber  *int     `json:"season_number"`
+	EpisodeNumber *int     `json:"episode_number"`
+	StartedAt     string   `json:"started_at"`
+	EndedAt       string   `json:"ended_at"`
+	Completed     bool     `json:"completed"`
+	Duration      *float64 `json:"duration_seconds"`
+	Watched       float64  `json:"watched_seconds"`
+	Played        *float64 `json:"played_seconds"`
+	Paused        *float64 `json:"paused_seconds"`
+	StartPosition *float64 `json:"start_position_seconds"`
+	PlayMethod    string   `json:"play_method"`
+	// Why it wasn't direct play; Silo builds from late November 2026 on.
+	AdaptationReasons []string `json:"adaptation_reasons"`
+	VideoDecision     *string  `json:"video_decision"`
+	AudioDecision     *string  `json:"audio_decision"`
+	EndReason         *string  `json:"end_reason"`
+	ClientIP          *string  `json:"client_ip"`
+	ClientName        *string  `json:"client_name"`
+	ClientVersion     *string  `json:"client_version"`
+	DeviceID          *string  `json:"device_id"`
+	DevicePlatform    *string  `json:"device_platform"`
 }
 
 func newSiloIngester(app *application, s *store) *siloIngester {
@@ -392,6 +394,10 @@ func (ingest *siloIngester) recordHistory(ctx context.Context, entry siloHistory
 	fields.set("video_decision", entry.VideoDecision)
 	fields.set("audio_decision", entry.AudioDecision)
 	fields.set("play_method", siloPlayMethod(entry.PlayMethod, deref(entry.VideoDecision), deref(entry.AudioDecision)))
+	// Only when present, so an older row never wipes reasons a live session recorded.
+	if len(entry.AdaptationReasons) > 0 {
+		fields.set("transcode_reason", strings.Join(entry.AdaptationReasons, ","))
+	}
 	if entry.UserID != "" {
 		accountID, err := ingest.store.ensureAccount(ctx, accountInfo{Source: "silo", ExternalID: entry.UserID, Username: entry.Username, DisplayName: entry.Username}, ended)
 		if err != nil {
