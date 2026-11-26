@@ -378,3 +378,29 @@ func TestLibraryStats(t *testing.T) {
 		t.Fatalf("added over time totals %d, want 3 items added in the week", total)
 	}
 }
+
+func TestSiloHistoryKeepsTranscodeReasons(t *testing.T) {
+	s, err := openStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.close()
+	ingest := &siloIngester{store: s}
+	ctx := context.Background()
+	var entry siloHistoryEntry
+	if err := json.Unmarshal([]byte(`{"session_id":"s1","user_id":"7","username":"jo","media_title":"Arrival","media_type":"movie",
+		"started_at":"2026-11-25T20:00:00Z","ended_at":"2026-11-25T22:00:00Z","play_method":"transcode",
+		"adaptation_reasons":["video_codec_unsupported","audio_channels_exceed"]}`), &entry); err != nil {
+		t.Fatal(err)
+	}
+	if err := ingest.recordHistory(ctx, entry, "silo_history"); err != nil {
+		t.Fatal(err)
+	}
+	var reasons string
+	if err := s.db.QueryRow(`SELECT COALESCE(transcode_reason, '') FROM plays WHERE session_key = 's1'`).Scan(&reasons); err != nil {
+		t.Fatal(err)
+	}
+	if reasons != "video_codec_unsupported,audio_channels_exceed" {
+		t.Fatalf("transcode_reason = %q, want both reasons from the history row", reasons)
+	}
+}
