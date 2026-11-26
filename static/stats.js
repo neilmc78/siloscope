@@ -226,6 +226,71 @@ const MonitorStats = (() => {
     return wrap;
   }
 
+  // heatmap shades a 7 × 24 grid of plays (rows Monday first) in five
+  // GitHub-style steps of the busiest slot.
+  function heatmap(grid) {
+    const wrap = make("div", "stats-chart");
+    const width = Math.max(260, root.clientWidth - 34);
+    const left = 34, bottom = 20, gap = 2;
+    const cell = Math.min(26, (width - left - 23 * gap) / 24);
+    const gridWidth = left + 24 * cell + 23 * gap;
+    const height = 7 * cell + 6 * gap + bottom;
+    const max = Math.max(0, ...grid.flat());
+    const dayName = index => new Date(2024, 0, 1 + index).toLocaleDateString(undefined, { weekday: "long" });
+    const chart = svg("svg", { viewBox: `0 0 ${gridWidth} ${height}`, width: gridWidth, height, role: "img", class: "stats-heatmap" });
+    let busiest = [0, 0];
+    grid.forEach((row, day) => row.forEach((value, hour) => { if (value > grid[busiest[0]][busiest[1]]) busiest = [day, hour]; }));
+    chart.setAttribute("aria-label", max
+      ? `Plays by day and hour. Busiest: ${dayName(busiest[0])} ${hourLabel(busiest[1])}, ${plural(max, "play")}`
+      : "Plays by day and hour: none");
+    const tip = tooltipLayer(wrap);
+    const level = value => (value && max ? Math.ceil((value / max) * 4) : 0);
+    const fill = (rect, step) => {
+      if (step) {
+        rect.setAttribute("fill", COLORS.series);
+        rect.setAttribute("fill-opacity", String(step / 4));
+      } else rect.setAttribute("class", "stats-heat-empty");
+    };
+    WEEKDAYS.forEach((label, day) => {
+      const y = day * (cell + gap);
+      const text = svg("text", { x: 0, y: y + cell / 2 + 4, class: "stats-axis" });
+      text.textContent = label;
+      chart.append(text);
+      grid[day].forEach((value, hour) => {
+        const x = left + hour * (cell + gap);
+        const rect = svg("rect", { x, y, width: cell, height: cell, rx: Math.min(3, cell / 4) });
+        fill(rect, level(value));
+        const show = () => {
+          const box = chart.getBoundingClientRect();
+          tip.show(((x + cell / 2) / gridWidth) * box.width, (y / height) * box.height, [`${dayName(day)} ${hourLabel(hour)}`, plural(value, "play")]);
+        };
+        rect.addEventListener("pointerenter", show);
+        rect.addEventListener("pointerdown", show);
+        rect.addEventListener("pointerleave", () => tip.hide());
+        chart.append(rect);
+      });
+    });
+    for (let hour = 0; hour < 24; hour += 6) {
+      const text = svg("text", { x: left + hour * (cell + gap), y: height - 4, class: "stats-axis" });
+      text.textContent = hourLabel(hour);
+      chart.append(text);
+    }
+    const legend = make("div", "stats-heat-legend");
+    legend.style.maxWidth = `${gridWidth}px`; // ends under the grid, which stops short of wide cards
+    legend.append(make("span", "", "Less"));
+    for (let step = 0; step <= 4; step++) {
+      const swatch = make("span", step ? "stats-heat-swatch" : "stats-heat-swatch empty");
+      if (step) {
+        swatch.style.background = COLORS.series;
+        swatch.style.opacity = String(step / 4);
+      }
+      legend.append(swatch);
+    }
+    legend.append(make("span", "", "More"));
+    wrap.append(chart, legend);
+    return wrap;
+  }
+
   function statTiles(totals, includeUsers) {
     const grid = make("div", "stats-tiles");
     const tiles = [["Plays", totals.plays.toLocaleString()], ["Watch time", duration(totals.watch_seconds)]];
@@ -470,7 +535,13 @@ const MonitorStats = (() => {
     weekday.append(barChart(WEEKDAYS, data.by_weekday, 1, (index, value) => [WEEKDAYS[index], plural(value, "play")]));
     const hours = card("Peak hours");
     hours.append(barChart([...Array(24).keys()].map(hourLabel), data.by_hour, 6, (index, value) => [hourLabel(index), plural(value, "play")]));
-    cards.push(weekday, hours, methodCard(data.methods || {}));
+    cards.push(weekday, hours);
+    if (data.by_weekday_hour?.some(row => row.some(Boolean))) {
+      const active = card("When users are active");
+      active.append(heatmap(data.by_weekday_hour));
+      cards.push(active);
+    }
+    cards.push(methodCard(data.methods || {}));
     return cards;
   }
 

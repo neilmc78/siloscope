@@ -58,7 +58,7 @@ func TestStatsCountsGroupsFiltersShortPlaysAndFindsPeak(t *testing.T) {
 		t.Fatalf("peak = %+v, want 2 streams, 1 transcode", payload.Peak)
 	}
 	// Both plays started after midnight Monday, London time.
-	if payload.ByWeekday[0] != 2 || payload.ByHour[0] != 2 {
+	if payload.ByWeekday[0] != 2 || payload.ByHour[0] != 2 || payload.ByWeekdayHour[0][0] != 2 {
 		t.Fatalf("weekday %v hour %v, want both plays on Monday 00:xx London time", payload.ByWeekday, payload.ByHour)
 	}
 	if len(payload.TopMovies) != 1 || payload.TopMovies[0].Plays != 2 || payload.TopMovies[0].Users != 2 {

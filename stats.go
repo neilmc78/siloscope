@@ -194,18 +194,20 @@ type statsPayload struct {
 	Peak       concurrencyPeak     `json:"peak"`
 	ByWeekday  [7]int              `json:"by_weekday"` // Monday first
 	ByHour     [24]int             `json:"by_hour"`
-	Methods    map[string]int      `json:"methods"`
-	Platforms  []rankedName        `json:"platforms"`
-	TopMovies  []*rankedTitle      `json:"top_movies"`
-	TopShows   []*rankedTitle      `json:"top_shows"`
-	PopMovies  []*rankedTitle      `json:"popular_movies"`
-	PopShows   []*rankedTitle      `json:"popular_shows"`
-	TopUsers   []rankedPerson      `json:"top_users"`
-	Recent     []recentPlay        `json:"recent"`
-	Person     *personDetail       `json:"person,omitempty"`
-	Devices    []deviceSummary     `json:"devices,omitempty"`
-	Quality    qualitySummary      `json:"quality"`
-	Addresses  []addressSummary    `json:"addresses,omitempty"`
+	// Plays by weekday (Monday first) and hour, for the activity heatmap.
+	ByWeekdayHour [7][24]int       `json:"by_weekday_hour"`
+	Methods       map[string]int   `json:"methods"`
+	Platforms     []rankedName     `json:"platforms"`
+	TopMovies     []*rankedTitle   `json:"top_movies"`
+	TopShows      []*rankedTitle   `json:"top_shows"`
+	PopMovies     []*rankedTitle   `json:"popular_movies"`
+	PopShows      []*rankedTitle   `json:"popular_shows"`
+	TopUsers      []rankedPerson   `json:"top_users"`
+	Recent        []recentPlay     `json:"recent"`
+	Person        *personDetail    `json:"person,omitempty"`
+	Devices       []deviceSummary  `json:"devices,omitempty"`
+	Quality       qualitySummary   `json:"quality"`
+	Addresses     []addressSummary `json:"addresses,omitempty"`
 }
 
 type statsTotals struct {
@@ -332,6 +334,7 @@ func (app *application) buildStats(request *http.Request, personID int64) (stats
 		if newGroup {
 			payload.ByWeekday[(int(started.Weekday())+6)%7]++
 			payload.ByHour[started.Hour()]++
+			payload.ByWeekdayHour[(int(started.Weekday())+6)%7][started.Hour()]++
 			if _, ok := payload.Methods[play.method]; ok {
 				payload.Methods[play.method]++
 			}

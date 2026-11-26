@@ -1904,3 +1904,11 @@ button.stats-added-body:focus-visible { outline: 2px solid var(--primary); outli
 .stats-figure dd { margin: 2px 0 0; font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .stats-footnote { margin: 0; font-size: 12px; }
 .library-intro { margin: 0 0 12px; text-align: left; } .library-setup { margin: 0 0 12px; }
+
+/* Activity heatmap (stats.js heatmap). */
+.stats-heat-empty { fill: var(--hairline-strong); fill-opacity: 0.45; }
+.stats-heat-legend { display: flex; align-items: center; justify-content: flex-end; gap: 4px; margin-top: 10px; color: var(--muted); font-size: 11px; }
+.stats-heat-legend > span:first-child { margin-right: 2px; }
+.stats-heat-legend > span:last-child { margin-left: 2px; }
+.stats-heat-swatch { width: 11px; height: 11px; border-radius: 3px; }
+.stats-heat-swatch.empty { background: var(--hairline-strong); opacity: 0.45; }
