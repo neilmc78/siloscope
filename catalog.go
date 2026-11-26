@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -56,6 +55,7 @@ type siloCatalogEntry struct {
 	EpisodeNumber *int64   `json:"episode_number"`
 	LibraryIDs    []string `json:"library_ids"`
 	AddedAt       string   `json:"added_at"`
+	PosterURL     string   `json:"poster_url"` // signed, expiring; Silo builds from 19 Nov 2026 on
 	Versions      []struct {
 		FileID    string `json:"file_id"`
 		FileSize  int64  `json:"file_size"`
@@ -138,36 +138,30 @@ func (s *store) loadCatalog(ctx context.Context) ([]catalogItem, error) {
 
 const recentlyAddedLimit = 12
 
-// refreshCatalogPosters caches posters for the newest titles. The admin
-// catalog has none, so each comes from Silo's item page; a title without one
-// is tried again after a day.
-func (a *application) refreshCatalogPosters(ctx context.Context, silo *siloIngester) {
+// refreshCatalogPosters caches posters for the newest titles from the
+// walk's own catalog pages: Silo signs a poster_url on each item (an
+// episode's is its series poster). The URLs expire, so they are fetched
+// during the walk that read them. A title without one is tried again on the
+// next walk. (Silo's per-item page would need a viewer profile, which
+// Siloscope's admin key has not.)
+func (a *application) refreshCatalogPosters(ctx context.Context, items []catalogItem, sources map[string]string) {
 	if a.store == nil || a.posters == nil {
 		return
 	}
-	items, err := a.store.loadCatalog(ctx)
-	if err != nil {
-		return
-	}
 	for _, id := range newestTitleIDs(items, recentlyAddedLimit) {
-		var fetched int64
 		var poster string
-		err := a.store.db.QueryRowContext(ctx, `SELECT poster_url, fetched_at FROM catalog_posters WHERE content_id = ?`, id).Scan(&poster, &fetched)
-		if err == nil && (poster != "" || time.Since(time.UnixMilli(fetched)) < 24*time.Hour) {
+		err := a.store.db.QueryRowContext(ctx, `SELECT poster_url FROM catalog_posters WHERE content_id = ?`, id).Scan(&poster)
+		if err == nil && poster != "" {
 			continue
 		}
-		body, _, err := silo.request(ctx, http.MethodGet, "/api/v2/catalog/items/"+url.PathEscape(id), nil, a.config.apiKey)
-		if err != nil {
-			log.Printf("catalog poster %s: %v", id, err)
+		source := sources[id]
+		if source == "" {
 			continue
 		}
-		var detail struct {
-			PosterURL string `json:"poster_url"`
-		}
-		_ = json.Unmarshal(body, &detail)
-		local := ""
-		if detail.PosterURL != "" {
-			local = a.posters.localURL(ctx, detail.PosterURL)
+		local := a.posters.localURL(ctx, source)
+		if local == "" {
+			log.Printf("catalog poster %s could not be cached", id)
+			continue
 		}
 		_, _ = a.store.db.ExecContext(ctx, `INSERT OR REPLACE INTO catalog_posters (content_id, poster_url, fetched_at) VALUES (?, ?, ?)`,
 			id, local, time.Now().UnixMilli())
@@ -265,7 +259,7 @@ func (app *application) libraryStatsJSON(writer http.ResponseWriter, request *ht
 		writeJSONError(writer, http.StatusInternalServerError, "Library stats could not be read")
 		return
 	}
-	played, err := app.store.playedTitleKeys(ctx)
+	played, playPosters, err := app.store.playedTitles(ctx)
 	if err != nil {
 		writeJSONError(writer, http.StatusInternalServerError, "Library stats could not be read")
 		return
@@ -283,31 +277,37 @@ func (app *application) libraryStatsJSON(writer http.ResponseWriter, request *ht
 		payload.UpdatedAt = &updated
 	}
 	app.libraryUsage.mu.RUnlock()
-	stats := buildLibraryStats(libraries, items, plays, played, posters, r)
+	stats := buildLibraryStats(libraries, items, plays, played, posters, playPosters, r)
 	stats.UpdatedAt, stats.Error = payload.UpdatedAt, payload.Error
 	_ = json.NewEncoder(writer).Encode(stats)
 }
 
-// playedTitleKeys lists every title anyone has ever played, on either server.
-func (s *store) playedTitleKeys(ctx context.Context) (map[string]bool, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT DISTINCT COALESCE(media_type, ''), COALESCE(title, ''), COALESCE(series_title, ''),
-		episode_number IS NOT NULL FROM plays`)
+// playedTitles lists every title anyone has ever played, on either server,
+// and the latest poster its plays saved (from Silo or Plex session rows).
+func (s *store) playedTitles(ctx context.Context) (map[string]bool, map[string]string, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT COALESCE(media_type, ''), COALESCE(title, ''), COALESCE(series_title, ''),
+		episode_number IS NOT NULL, COALESCE(poster_url, '') FROM plays ORDER BY started_at DESC`)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer rows.Close()
-	keys := map[string]bool{}
+	keys, posters := map[string]bool{}, map[string]string{}
 	for rows.Next() {
-		var mediaType, title, series string
+		var mediaType, title, series, poster string
 		var hasEpisode bool
-		if err := rows.Scan(&mediaType, &title, &series, &hasEpisode); err != nil {
-			return nil, err
+		if err := rows.Scan(&mediaType, &title, &series, &hasEpisode, &poster); err != nil {
+			return nil, nil, err
 		}
-		if key, _, _ := titleKeyFor(mediaType, title, series, hasEpisode); key != "" {
-			keys[key] = true
+		key, _, _ := titleKeyFor(mediaType, title, series, hasEpisode)
+		if key == "" {
+			continue
+		}
+		keys[key] = true
+		if posters[key] == "" && poster != "" {
+			posters[key] = poster
 		}
 	}
-	return keys, rows.Err()
+	return keys, posters, rows.Err()
 }
 
 func (s *store) catalogPosters(ctx context.Context) (map[string]string, error) {
@@ -328,7 +328,9 @@ func (s *store) catalogPosters(ctx context.Context) (map[string]string, error) {
 }
 
 // buildLibraryStats joins the catalog (newest first) to the period's plays.
-func buildLibraryStats(libraries []libraryUsage, items []catalogItem, plays []statsPlay, played map[string]bool, posters map[string]string, r statsRange) libraryStatsPayload {
+// posters are the catalog's cached posters by title ID; playPosters, by
+// title key, stand in for a played title the catalog has no poster for.
+func buildLibraryStats(libraries []libraryUsage, items []catalogItem, plays []statsPlay, played map[string]bool, posters, playPosters map[string]string, r statsRange) libraryStatsPayload {
 	payload := libraryStatsPayload{Range: r.key, Bucket: r.bucket, Libraries: []libraryStat{}, AddedOverTime: []addedBucket{},
 		Recent: []recentTitle{}, NeverPlayed: []unplayedTitle{}}
 	index := map[string]int{}
@@ -464,7 +466,7 @@ func buildLibraryStats(libraries []libraryUsage, items []catalogItem, plays []st
 		if len(payload.Recent) == recentlyAddedLimit {
 			break
 		}
-		recent := recentTitle{Key: entry.key, Title: entry.name, Kind: entry.kind, Poster: posters[entry.id], AddedAt: entry.latest, Played: played[entry.key],
+		recent := recentTitle{Key: entry.key, Title: entry.name, Kind: entry.kind, Poster: firstNonEmpty(posters[entry.id], playPosters[entry.key]), AddedAt: entry.latest, Played: played[entry.key],
 			Library: libraryName(sortedKeys(entry.libraries))}
 		if entry.kind == "show" {
 			recent.Subtitle = newEpisodesLabel(entry.episodes)
